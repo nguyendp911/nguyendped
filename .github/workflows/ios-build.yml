@@ -1,4 +1,4 @@
-name: iOS Build
+name: iOS Device Build (unsigned)
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  build-ios:
-    name: Build iOS Simulator app
+  build-ios-device:
+    name: Build iOS device arm64 without signing
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -26,36 +26,46 @@ jobs:
           swiftc Engines/ScrambleEngine.swift Tests/ScrambleSmokeTest.swift -o "$RUNNER_TEMP/scramble-smoke"
           "$RUNNER_TEMP/scramble-smoke"
 
-      - name: Build iOS Simulator (unsigned)
+      - name: Build unsigned iOS device app (iphoneos)
         run: |
           set -o pipefail
           xcodebuild \
             -project SecretTextStudio.xcodeproj \
             -scheme SecretTextStudio \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log"
 
-      - name: Package simulator app
-        if: success()
+      - name: Verify device binary and package unsigned IPA
         run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/SecretTextStudio.app" \
-            "$RUNNER_TEMP/SecretTextStudio-iOS-Simulator.zip"
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/SecretTextStudio.app"
+          test -d "$APP"
+          test -f "$APP/SecretTextStudio"
+          file "$APP/SecretTextStudio"
+          lipo -archs "$APP/SecretTextStudio" | grep -w arm64
+          mkdir -p "$RUNNER_TEMP/package/Payload"
+          ditto "$APP" "$RUNNER_TEMP/package/Payload/SecretTextStudio.app"
+          (cd "$RUNNER_TEMP/package" && /usr/bin/zip -q -r "$RUNNER_TEMP/SecretTextStudio-unsigned.ipa" Payload)
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$RUNNER_TEMP/SecretTextStudio-iphoneos-app.zip"
+          ls -lh "$RUNNER_TEMP/SecretTextStudio-unsigned.ipa" "$RUNNER_TEMP/SecretTextStudio-iphoneos-app.zip"
 
-      - name: Upload build output
-        if: success()
+      - name: Upload unsigned iPhone build
         uses: actions/upload-artifact@v4
         with:
-          name: SecretTextStudio-iOS-Simulator
-          path: ${{ runner.temp }}/SecretTextStudio-iOS-Simulator.zip
+          name: SecretTextStudio-iOS-Device-Unsigned
+          path: |
+            ${{ runner.temp }}/SecretTextStudio-unsigned.ipa
+            ${{ runner.temp }}/SecretTextStudio-iphoneos-app.zip
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload build log on failure
+      - name: Upload Xcode log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
