@@ -49,7 +49,7 @@
     /* End PBXResourcesBuildPhase section */
 
     /* Begin PBXShellScriptBuildPhase section */
-    AAAAAAAAAAAAAAAAAAAAAA03 /* Generate App Icon */ = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Generate ViePN App Icon"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "cd $SRCROOT && /usr/bin/swift Tools/generate_icon.swift"; };
+    AAAAAAAAAAAAAAAAAAAAAA03 /* Generate App Icon */ = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = (); name = "Generate ViePN App Icon"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "cd $SRCROOT && SDKROOT=$(/usr/bin/xcrun --sdk macosx --show-sdk-path) /usr/bin/swift Tools/generate_icon.swift"; };
     /* End PBXShellScriptBuildPhase section */
 
     /* Begin PBXNativeTarget section */
