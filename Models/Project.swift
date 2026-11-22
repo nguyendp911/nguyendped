@@ -157,8 +157,8 @@ struct AudioClip: Codable, Identifiable, Equatable {
 
 struct StudioProject: Codable {
     var id = UUID()
-    var name = "Secret Text Project"
-    var scenes: [TextScene] = [TextScene(text: "Anh yêu em mãi mãi", title: "Lời nhắn đầu tiên")]
+    var name = "ViePN Reveal Project"
+    var scenes: [TextScene] = [TextScene(text: "", title: "Cảnh 1")]
     var audioClips: [AudioClip] = []
     var aspect: VideoAspect = .portrait
     var fps: Int = 30
