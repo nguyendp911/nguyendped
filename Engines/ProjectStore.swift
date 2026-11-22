@@ -146,6 +146,51 @@ enum NarrationError: LocalizedError {
 final class VietnameseNarrationEngine {
     private let synth = AVSpeechSynthesizer()
 
+    /// A distinct synthesis utterance is recorded for each visible caption.
+    /// The emitted PCM frames, not reading-speed guesses, define the cue times.
+    func createTimedTrack(chunks: [String], rate: Float, output: URL) async throws -> [CaptionCue] {
+        guard !chunks.isEmpty else { throw NarrationError.emptyAudio }
+        let directory = output.deletingLastPathComponent()
+        var fragments: [URL] = []
+        defer { for file in fragments { try? FileManager.default.removeItem(at: file) } }
+        for part in chunks {
+            let file = directory.appendingPathComponent("voice-part-\(UUID().uuidString).caf")
+            fragments.append(file)
+            _ = try await create(text: part, rate: rate, output: file)
+        }
+        let first = try AVAudioFile(forReading: fragments[0])
+        let format = first.processingFormat
+        let sampleRate = format.sampleRate
+        guard sampleRate > 0 else { throw NarrationError.emptyAudio }
+        try? FileManager.default.removeItem(at: output)
+        let destination = try AVAudioFile(
+            forWriting: output, settings: first.fileFormat.settings,
+            commonFormat: format.commonFormat, interleaved: format.isInterleaved
+        )
+        var position: AVAudioFramePosition = 0
+        var cues: [CaptionCue] = []
+        for (index, partFile) in fragments.enumerated() {
+            let source = try AVAudioFile(forReading: partFile)
+            guard source.processingFormat.sampleRate == sampleRate,
+                  source.processingFormat.channelCount == format.channelCount,
+                  source.processingFormat.commonFormat == format.commonFormat else {
+                throw NarrationError.unsupportedBuffer
+            }
+            let begin = Double(position) / sampleRate
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096)!
+            while source.framePosition < source.length {
+                try source.read(into: buffer)
+                guard buffer.frameLength > 0 else { break }
+                try destination.write(from: buffer)
+                position += AVAudioFramePosition(buffer.frameLength)
+            }
+            let finish = Double(position) / sampleRate
+            cues.append(CaptionCue(text: chunks[index], startTime: begin, endTime: finish))
+        }
+        guard position > 0 else { throw NarrationError.emptyAudio }
+        return cues
+    }
+
     func create(text: String, rate: Float, output: URL) async throws -> Double {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw NarrationError.emptyAudio }
