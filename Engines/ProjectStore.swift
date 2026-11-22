@@ -11,32 +11,119 @@ import UniformTypeIdentifiers
     @Published var exportedURL: URL?
     @Published var renderError: String?
     private let filename = "project.json"
+    private let previousFilename = "previous-project.json"
     private var scheduledSave: DispatchWorkItem?
+    private(set) var hasEditedCurrentProject = false
+
     var documents: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
     var sceneIndex: Int { project.scenes.firstIndex { $0.id == selectedSceneID } ?? 0 }
     var selected: TextScene { project.scenes[sceneIndex] }
+    var hasPreviousDraft: Bool {
+        FileManager.default.fileExists(atPath: documents.appendingPathComponent(previousFilename).path)
+    }
 
     init() {
-        load()
+        // Never silently resume the previous movie and append new samples to it.
+        // Preserve the last session separately; opening it is an explicit user action.
+        let file = documents.appendingPathComponent(filename)
+        if FileManager.default.fileExists(atPath: file.path) {
+            let backup = documents.appendingPathComponent(previousFilename)
+            if let bytes = try? Data(contentsOf: file),
+               let old = try? JSONDecoder().decode(StudioProject.self, from: bytes),
+               !old.scenes.isEmpty {
+                try? bytes.write(to: backup, options: .atomic)
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+        project = StudioProject()
         selectedSceneID = project.scenes.first?.id
     }
+
     func updateScene(_ change: (inout TextScene) -> Void) {
         guard !project.scenes.isEmpty else { return }
-        change(&project.scenes[sceneIndex]); scheduleSave()
+        let oldText = project.scenes[sceneIndex].text
+        change(&project.scenes[sceneIndex])
+        if project.scenes[sceneIndex].text != oldText {
+            project.scenes[sceneIndex].captionCues = []
+            // Prior synthesized speech and cue offsets can no longer be trusted
+            // after an edit. Keep imported music but remove stale voiceover clips.
+            project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+        }
+        scheduleSave()
     }
+
     func addScene() {
-        let scene = TextScene(text: "Thông điệp mới", style: MotionStyle.allCases[project.scenes.count % MotionStyle.allCases.count], title: "Cảnh \(project.scenes.count + 1)")
-        project.scenes.append(scene); selectedSceneID = scene.id; save()
+        let scene = TextScene(text: "", style: MotionStyle.allCases[project.scenes.count % MotionStyle.allCases.count],
+                              title: "Cảnh \(project.scenes.count + 1)")
+        project.scenes.append(scene)
+        selectedSceneID = scene.id
+        save()
     }
     func duplicateScene() {
-        var scene = selected; scene.id = UUID(); scene.title += " (bản sao)"
-        project.scenes.insert(scene, at: sceneIndex+1); selectedSceneID = scene.id; save()
+        var scene = selected
+        scene.id = UUID()
+        scene.title += " (bản sao)"
+        scene.captionCues = []
+        project.scenes.insert(scene, at: sceneIndex + 1)
+        selectedSceneID = scene.id
+        // Old synthesized narration no longer matches scene offsets.
+        project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+        save()
     }
     func deleteScene() {
         guard project.scenes.count > 1 else { toast = "Cần giữ ít nhất một cảnh"; return }
-        project.scenes.remove(at: sceneIndex); selectedSceneID = project.scenes.first?.id; save()
+        project.scenes.remove(at: sceneIndex)
+        project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+        selectedSceneID = project.scenes.first?.id
+        save()
     }
-    func move(from: IndexSet, to: Int) { project.scenes.move(fromOffsets: from, toOffset: to); save() }
+    func move(from: IndexSet, to: Int) {
+        project.scenes.move(fromOffsets: from, toOffset: to)
+        project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+        save()
+    }
+
+    func newProject() {
+        scheduledSave?.cancel()
+        scheduledSave = nil
+        // Retain current work as the recoverable previous draft.
+        if hasEditedCurrentProject {
+            if let bytes = try? JSONEncoder().encode(project) {
+                try? bytes.write(to: documents.appendingPathComponent(previousFilename), options: .atomic)
+            }
+        }
+        project = StudioProject()
+        selectedSceneID = project.scenes.first?.id
+        exportedURL = nil
+        renderProgress = 0
+        hasEditedCurrentProject = false
+        try? FileManager.default.removeItem(at: documents.appendingPathComponent(filename))
+    }
+
+    func restorePreviousProject() {
+        guard let bytes = try? Data(contentsOf: documents.appendingPathComponent(previousFilename)),
+              let restored = try? JSONDecoder().decode(StudioProject.self, from: bytes),
+              !restored.scenes.isEmpty else {
+            toast = "Không có bản nháp trước để mở."
+            return
+        }
+        // Keep a recoverable copy of the current edit if it was changed.
+        if hasEditedCurrentProject {
+            try? JSONEncoder().encode(project).write(
+                to: documents.appendingPathComponent("recovery-current-project.json"),
+                options: .atomic)
+        }
+        scheduledSave?.cancel()
+        scheduledSave = nil
+        project = restored
+        selectedSceneID = restored.scenes.first?.id
+        exportedURL = nil
+        renderProgress = 0
+        hasEditedCurrentProject = true
+        save()
+        toast = "Đã mở bản nháp trước."
+    }
+
     private func scheduleSave() {
         scheduledSave?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.save() }
@@ -46,14 +133,13 @@ import UniformTypeIdentifiers
     func save() {
         scheduledSave?.cancel()
         scheduledSave = nil
-        do { try JSONEncoder().encode(project).write(to: documents.appendingPathComponent(filename), options: .atomic) }
-        catch { toast = "Không lưu được dự án: \(error.localizedDescription)" }
+        hasEditedCurrentProject = true
+        do {
+            try JSONEncoder().encode(project).write(
+                to: documents.appendingPathComponent(filename), options: .atomic)
+        } catch { toast = "Không lưu được dự án: \(error.localizedDescription)" }
     }
-    func load() {
-        let url = documents.appendingPathComponent(filename)
-        guard let data = try? Data(contentsOf: url), let decoded = try? JSONDecoder().decode(StudioProject.self, from: data), !decoded.scenes.isEmpty else { return }
-        project = decoded
-    }
+
     func importAudio(_ url: URL) {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
