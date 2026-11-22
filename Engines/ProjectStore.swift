@@ -72,3 +72,97 @@ import UniformTypeIdentifiers
         project.audioClips.removeAll { $0.id == id }; save()
     }
 }
+
+
+// Renders the iPhone's installed Vietnamese speech voice into a real CAF audio
+// file. Timing is measured from emitted PCM frames, never estimated from words.
+final class NarrationRenderSession {
+    private let lock = NSLock()
+    private let outputURL: URL
+    private var continuation: CheckedContinuation<Double, Error>?
+    private var audioFile: AVAudioFile?
+    private var totalFrames: AVAudioFramePosition = 0
+    private var sampleRate: Double = 0
+    private var ended = false
+
+    init(outputURL: URL, continuation: CheckedContinuation<Double, Error>) {
+        self.outputURL = outputURL
+        self.continuation = continuation
+    }
+
+    func accept(_ buffer: AVAudioBuffer) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !ended else { return }
+        guard let pcm = buffer as? AVAudioPCMBuffer else {
+            finish(.failure(NarrationError.unsupportedBuffer))
+            return
+        }
+        if pcm.frameLength == 0 {
+            audioFile = nil
+            let seconds = sampleRate > 0 ? Double(totalFrames) / sampleRate : 0
+            if seconds <= 0 {
+                finish(.failure(NarrationError.emptyAudio))
+            } else {
+                finish(.success(seconds))
+            }
+            return
+        }
+        do {
+            if audioFile == nil {
+                sampleRate = pcm.format.sampleRate
+                audioFile = try AVAudioFile(forWriting: outputURL, settings: pcm.format.settings)
+            }
+            try audioFile?.write(from: pcm)
+            totalFrames += AVAudioFramePosition(pcm.frameLength)
+        } catch {
+            audioFile = nil
+            finish(.failure(error))
+        }
+    }
+
+    private func finish(_ result: Result<Double, Error>) {
+        guard !ended else { return }
+        ended = true
+        let savedContinuation = continuation
+        continuation = nil
+        savedContinuation?.resume(with: result)
+    }
+}
+
+enum NarrationError: LocalizedError {
+    case missingVietnameseVoice, emptyAudio, unsupportedBuffer
+    var errorDescription: String? {
+        switch self {
+        case .missingVietnameseVoice:
+            return "Thiết bị chưa có giọng đọc Tiếng Việt hỗ trợ tạo audio. Hãy kiểm tra các giọng đọc trong Cài đặt iPhone."
+        case .emptyAudio: return "Giọng đọc không tạo ra dữ liệu âm thanh."
+        case .unsupportedBuffer: return "Định dạng âm thanh giọng đọc chưa được hỗ trợ."
+        }
+    }
+}
+
+@MainActor
+final class VietnameseNarrationEngine {
+    private let synth = AVSpeechSynthesizer()
+
+    func create(text: String, rate: Float, output: URL) async throws -> Double {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw NarrationError.emptyAudio }
+        guard let vietnamese = AVSpeechSynthesisVoice(language: "vi-VN") else {
+            throw NarrationError.missingVietnameseVoice
+        }
+        try? FileManager.default.removeItem(at: output)
+        let utterance = AVSpeechUtterance(string: trimmed)
+        utterance.voice = vietnamese
+        utterance.rate = max(0.40, min(0.60, rate))
+        utterance.preUtteranceDelay = 0
+        utterance.postUtteranceDelay = 0
+        return try await withCheckedThrowingContinuation { continuation in
+            let session = NarrationRenderSession(outputURL: output, continuation: continuation)
+            synth.write(utterance) { buffer in
+                session.accept(buffer)
+            }
+        }
+    }
+}
