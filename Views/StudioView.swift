@@ -1,12 +1,15 @@
 import SwiftUI
 import AVFoundation
 import UniformTypeIdentifiers
+import Photos
 
 struct StudioView: View {
     @StateObject private var store = ProjectStore()
     @State private var tab: StudioTab = .create
     @State private var isImporting = false
     @State private var isSharing = false
+    @State private var savedToPhotos = false
+    @State private var savingToPhotos = false
     @State private var cancellation: RenderCancellation?
     @State private var isExporting = false
     @State private var previewPlaying = true
@@ -298,7 +301,22 @@ struct StudioView: View {
                 Button { beginExport() } label: { Label("Tạo MP4 H.264", systemImage: "film.stack") }.buttonStyle(PrimaryButtonStyle())
             }
             if let url = store.exportedURL {
-                Button { isSharing = true } label: { Label("Chia sẻ / Lưu vào Files", systemImage: "square.and.arrow.up") }.buttonStyle(PrimaryButtonStyle())
+                if savedToPhotos {
+                    Label("Đã lưu video vào ứng dụng Ảnh", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green).font(.subheadline.bold())
+                } else {
+                    Button {
+                        Task { await saveVideoToPhotos(url) }
+                    } label: {
+                        Label(savingToPhotos ? "Đang lưu vào Ảnh..." : "Lưu vào bộ sưu tập Ảnh",
+                              systemImage: "photo.on.rectangle")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(savingToPhotos)
+                }
+                Button { isSharing = true } label: {
+                    Label("Chia sẻ video (tùy chọn)", systemImage: "square.and.arrow.up")
+                }.buttonStyle(.bordered)
                 Text(url.lastPathComponent).font(.caption.monospaced()).foregroundStyle(.gray).textSelection(.enabled)
             }
             Text("Xuất bằng CPU/GPU trên máy; video dài hoặc 4K có thể mất nhiều thời gian và cần dung lượng trống. Đây chưa phải bộ xuất background có thể tiếp tục sau khi iOS đóng app.").font(.caption).foregroundStyle(.gray)
@@ -311,6 +329,7 @@ struct StudioView: View {
     private func beginExport() {
         guard !isExporting else { return }
         store.save(); store.exportedURL = nil; store.renderProgress = 0
+        savedToPhotos = false
         isExporting = true
         let token = RenderCancellation(); cancellation = token
         let snapshot = store.project
@@ -321,9 +340,43 @@ struct StudioView: View {
                     DispatchQueue.main.async { store.renderProgress = p }
                 }
                 store.exportedURL = url
-                store.toast = "Xuất video thành công!"
+                await saveVideoToPhotos(url)
             } catch { store.toast = error.localizedDescription }
             isExporting = false
+        }
+    }
+
+    @MainActor
+    private func saveVideoToPhotos(_ url: URL) async {
+        guard !savingToPhotos else { return }
+        savingToPhotos = true
+        defer { savingToPhotos = false }
+        let status = await withCheckedContinuation { (continuation: CheckedContinuation<PHAuthorizationStatus, Never>) in
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { result in
+                continuation.resume(returning: result)
+            }
+        }
+        guard status == .authorized || status == .limited else {
+            store.toast = "Ứng dụng chưa được cấp quyền thêm video vào Ảnh. Vào Cài đặt → ViePN Reveal → Ảnh để cấp quyền, rồi nhấn Lưu vào bộ sưu tập. File video vẫn còn trong ứng dụng."
+            return
+        }
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                } completionHandler: { success, error in
+                    if success { continuation.resume(returning: ()) }
+                    else {
+                        continuation.resume(throwing: error ?? NSError(
+                            domain: "ViePNReveal.Photos", code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Không thể lưu video vào Ảnh"]))
+                    }
+                }
+            }
+            savedToPhotos = true
+            store.toast = "Đã xuất và lưu video vào bộ sưu tập Ảnh!"
+        } catch {
+            store.toast = "Video đã render nhưng không lưu được vào Ảnh: \(error.localizedDescription). Bạn có thể thử lại bằng nút Lưu vào bộ sưu tập."
         }
     }
 
