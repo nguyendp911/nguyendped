@@ -115,7 +115,11 @@ final class FrameRenderer {
             }
 
             let msgFont = UIFont.systemFont(ofSize: max(24, W * 0.061), weight: .bold)
-            if scene.textMotion == .scrollUp {
+            if scene.textMotion == .pages {
+                drawCaptionPages(scene: scene, in: ctx, width: W, height: H,
+                                 time: time, font: msgFont,
+                                 color: scene.style == .paperFold ? .white : accent)
+            } else if scene.textMotion == .scrollUp {
                 drawScroll(scene: scene, in: ctx, width: W, height: H,
                            time: time, font: msgFont,
                            color: scene.style == .paperFold ? .white : accent)
@@ -133,6 +137,95 @@ final class FrameRenderer {
             let footer = String(format: "%02d%%   •   %@", Int(progress * 100), scene.title.uppercased())
             drawText(footer, in: CGRect(x: W*0.07, y: H*0.94, width: W*0.86, height: 28), font: .monospacedSystemFont(ofSize: max(10, W*0.021), weight: .light), color: .white.withAlphaComponent(0.42), alignment: .center)
         }
+    }
+
+    /// Break content into short reading cards. Each card stays on-screen rather
+    /// than requiring the viewer to continuously track scrolling text.
+    private func captionChunks(_ text: String) -> [String] {
+        let separators = CharacterSet(charactersIn: ".!?;:\n")
+        var sentences: [String] = []
+        var current = ""
+        for character in text {
+            current.append(character)
+            if character.unicodeScalars.allSatisfy({ separators.contains($0) }) {
+                let line = current.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !line.isEmpty { sentences.append(line) }
+                current = ""
+            }
+        }
+        let tail = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { sentences.append(tail) }
+
+        var parts: [String] = []
+        for sentence in sentences {
+            var chunk = ""
+            for word in sentence.split(whereSeparator: { $0.isWhitespace }) {
+                let token = String(word)
+                if !chunk.isEmpty && (chunk.count + token.count + 1 > 68 ||
+                                      chunk.split(separator: " ").count >= 11) {
+                    parts.append(chunk)
+                    chunk = token
+                } else {
+                    chunk = chunk.isEmpty ? token : chunk + " " + token
+                }
+            }
+            if !chunk.isEmpty { parts.append(chunk) }
+        }
+        return parts.isEmpty ? ["· · ·"] : parts
+    }
+
+    private func drawCaptionPages(scene: TextScene, in ctx: CGContext, width: CGFloat,
+                                  height: CGFloat, time: Double, font: UIFont, color: UIColor) {
+        let chunks = captionChunks(scene.text)
+        let totalWeight = chunks.reduce(0.0) { result, part in
+            result + Double(max(part.count, 14))
+        }
+        let elapsedWeight = min(0.999999, max(0, time / max(scene.duration, 0.1))) * totalWeight
+        var accumulated = 0.0
+        var selectedIndex = chunks.count - 1
+        var localProgress = 1.0
+        for (index, part) in chunks.enumerated() {
+            let weight = Double(max(part.count, 14))
+            if elapsedWeight < accumulated + weight {
+                selectedIndex = index
+                localProgress = (elapsedWeight - accumulated) / weight
+                break
+            }
+            accumulated += weight
+        }
+        let message = chunks[selectedIndex]
+        let viewport = CGRect(x: width * 0.08, y: height * 0.67,
+                              width: width * 0.84, height: height * 0.22)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        paragraph.lineSpacing = font.pointSize * 0.16
+        var fontSize = font.pointSize
+        var measuredHeight: CGFloat = 0
+        var attrs: [NSAttributedString.Key: Any] = [:]
+        for _ in 0..<7 {
+            let chosenFont = UIFont.systemFont(ofSize: fontSize, weight: .bold)
+            attrs = [.font: chosenFont, .foregroundColor: color, .paragraphStyle: paragraph]
+            let size = (message as NSString).boundingRect(
+                with: CGSize(width: viewport.width, height: CGFloat.greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+            measuredHeight = ceil(size.height)
+            if measuredHeight <= viewport.height * 0.94 { break }
+            fontSize *= 0.89
+        }
+
+        let fadeIn = min(1, localProgress / 0.11)
+        let fadeOut = min(1, (1 - localProgress) / 0.11)
+        let alpha = CGFloat(min(fadeIn, fadeOut))
+        let rise = (1 - CGFloat(min(1, localProgress / 0.18))) * height * 0.018
+        let rect = CGRect(x: viewport.minX,
+                          y: viewport.midY - measuredHeight / 2 + rise,
+                          width: viewport.width, height: max(measuredHeight + 4, font.lineHeight))
+        ctx.saveGState()
+        ctx.clip(to: viewport)
+        ctx.setAlpha(alpha)
+        (message as NSString).draw(in: rect, withAttributes: attrs)
+        ctx.restoreGState()
     }
 
     private func drawScroll(scene: TextScene, in ctx: CGContext, width: CGFloat,
