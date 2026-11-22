@@ -44,6 +44,7 @@ enum MotionStyle: String, Codable, CaseIterable, Identifiable {
 }
 
 enum TextMotion: String, Codable, CaseIterable, Identifiable {
+    case pages = "Theo từng câu"
     case reveal = "Hiện chữ dần"
     case scrollUp = "Chạy từ dưới lên"
     var id: String { rawValue }
@@ -58,7 +59,7 @@ struct TextScene: Identifiable, Codable, Equatable {
     var foreground: RGBAColor = .cyan
     var title: String = "Cảnh 1"
     var transitionDuration: Double = 0.4
-    var textMotion: TextMotion = .reveal
+    var textMotion: TextMotion = .pages
     var scrollSpeed: Double = 1.0
     enum CodingKeys: String, CodingKey {
         case id, text, duration, style, seed, noiseCount, foreground, title, transitionDuration, textMotion, scrollSpeed
@@ -66,7 +67,7 @@ struct TextScene: Identifiable, Codable, Equatable {
     init(id: UUID = UUID(), text: String, duration: Double = 8, style: MotionStyle = .cyberMatrix,
          seed: UInt64 = UInt64.random(in: 1...UInt64.max), noiseCount: Int = 70,
          foreground: RGBAColor = .cyan, title: String = "Cảnh 1",
-         transitionDuration: Double = 0.4, textMotion: TextMotion = .reveal, scrollSpeed: Double = 1.0) {
+         transitionDuration: Double = 0.4, textMotion: TextMotion = .pages, scrollSpeed: Double = 1.0) {
         self.id = id; self.text = text; self.duration = duration; self.style = style
         self.seed = seed; self.noiseCount = noiseCount; self.foreground = foreground
         self.title = title; self.transitionDuration = transitionDuration
@@ -83,7 +84,7 @@ struct TextScene: Identifiable, Codable, Equatable {
         foreground = try c.decode(RGBAColor.self, forKey: .foreground)
         title = try c.decode(String.self, forKey: .title)
         transitionDuration = try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.4
-        textMotion = try c.decodeIfPresent(TextMotion.self, forKey: .textMotion) ?? .reveal
+        textMotion = try c.decodeIfPresent(TextMotion.self, forKey: .textMotion) ?? .pages
         scrollSpeed = try c.decodeIfPresent(Double.self, forKey: .scrollSpeed) ?? 1.0
     }
     static func == (lhs: Self, rhs: Self) -> Bool {
