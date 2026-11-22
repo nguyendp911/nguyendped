@@ -42,9 +42,10 @@ import UniformTypeIdentifiers
     func updateScene(_ change: (inout TextScene) -> Void) {
         guard !project.scenes.isEmpty else { return }
         let oldText = project.scenes[sceneIndex].text
+        let oldVoice = project.scenes[sceneIndex].voiceConfiguration
         change(&project.scenes[sceneIndex])
         hasEditedCurrentProject = true
-        if project.scenes[sceneIndex].text != oldText {
+        if project.scenes[sceneIndex].text != oldText || project.scenes[sceneIndex].voiceConfiguration != oldVoice {
             project.scenes[sceneIndex].captionCues = []
             // Prior synthesized speech and cue offsets can no longer be trusted
             // after an edit. Keep imported music but remove stale voiceover clips.
@@ -235,7 +236,7 @@ final class VietnameseNarrationEngine {
 
     /// A distinct synthesis utterance is recorded for each visible caption.
     /// The emitted PCM frames, not reading-speed guesses, define the cue times.
-    func createTimedTrack(chunks: [String], rate: Float, output: URL) async throws -> [CaptionCue] {
+    func createTimedTrack(chunks: [String], configuration: VoiceConfiguration, output: URL) async throws -> [CaptionCue] {
         guard !chunks.isEmpty else { throw NarrationError.emptyAudio }
         let directory = output.deletingLastPathComponent()
         var fragments: [URL] = []
@@ -243,7 +244,7 @@ final class VietnameseNarrationEngine {
         for part in chunks {
             let file = directory.appendingPathComponent("voice-part-\(UUID().uuidString).caf")
             fragments.append(file)
-            _ = try await create(text: part, rate: rate, output: file)
+            _ = try await create(text: part, configuration: configuration, output: file)
         }
         let first = try AVAudioFile(forReading: fragments[0])
         let format = first.processingFormat
@@ -278,16 +279,22 @@ final class VietnameseNarrationEngine {
         return cues
     }
 
-    func create(text: String, rate: Float, output: URL) async throws -> Double {
+    func create(text: String, configuration: VoiceConfiguration, output: URL) async throws -> Double {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw NarrationError.emptyAudio }
-        guard let vietnamese = AVSpeechSynthesisVoice(language: "vi-VN") else {
+        let chosen = AVSpeechSynthesisVoice.speechVoices().first {
+            $0.identifier == configuration.voiceIdentifier && $0.language.lowercased().hasPrefix("vi")
+        }
+        guard let vietnamese = chosen ?? AVSpeechSynthesisVoice(language: "vi-VN") else {
             throw NarrationError.missingVietnameseVoice
         }
         try? FileManager.default.removeItem(at: output)
         let utterance = AVSpeechUtterance(string: trimmed)
         utterance.voice = vietnamese
-        utterance.rate = max(0.40, min(0.60, rate))
+        utterance.rate = max(AVSpeechUtteranceMinimumSpeechRate,
+                             min(AVSpeechUtteranceMaximumSpeechRate, configuration.rate))
+        utterance.pitchMultiplier = max(0.5, min(2, configuration.pitch))
+        utterance.volume = max(0, min(1, configuration.volume))
         utterance.preUtteranceDelay = 0
         utterance.postUtteranceDelay = 0
         return try await withCheckedThrowingContinuation { continuation in
@@ -296,5 +303,36 @@ final class VietnameseNarrationEngine {
                 session.accept(buffer)
             }
         }
+    }
+}
+
+
+/// Lightweight on-device spoken preview: no video rendering or file writes.
+/// Reuses the same voice/utterance parameters as export.
+@MainActor
+final class VoiceLivePreview: ObservableObject {
+    private let synthesizer = AVSpeechSynthesizer()
+    @Published private(set) var isSpeaking = false
+
+    func play(text: String, configuration: VoiceConfiguration) {
+        synthesizer.stopSpeaking(at: .immediate)
+        let excerpt = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(250))
+        guard !excerpt.isEmpty else { isSpeaking = false; return }
+        let utterance = AVSpeechUtterance(string: excerpt)
+        let chosen = AVSpeechSynthesisVoice.speechVoices().first {
+            $0.identifier == configuration.voiceIdentifier && $0.language.lowercased().hasPrefix("vi")
+        }
+        utterance.voice = chosen ?? AVSpeechSynthesisVoice(language: "vi-VN")
+        utterance.rate = max(AVSpeechUtteranceMinimumSpeechRate,
+                             min(AVSpeechUtteranceMaximumSpeechRate, configuration.rate))
+        utterance.pitchMultiplier = max(0.5, min(2, configuration.pitch))
+        utterance.volume = max(0, min(1, configuration.volume))
+        synthesizer.speak(utterance)
+        isSpeaking = true
+    }
+
+    func stop() {
+        synthesizer.stopSpeaking(at: .immediate)
+        isSpeaking = false
     }
 }
