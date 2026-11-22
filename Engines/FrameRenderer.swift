@@ -147,59 +147,39 @@ final class FrameRenderer {
         cacheLock.lock()
         defer { cacheLock.unlock() }
         if text == cachedCaptionText, !cachedCaptions.isEmpty { return cachedCaptions }
-        let separators = CharacterSet(charactersIn: ".!?;:\n")
-        var sentences: [String] = []
-        var current = ""
-        for character in text {
-            current.append(character)
-            if character.unicodeScalars.allSatisfy({ separators.contains($0) }) {
-                let line = current.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !line.isEmpty { sentences.append(line) }
-                current = ""
-            }
-        }
-        let tail = current.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !tail.isEmpty { sentences.append(tail) }
-
-        var parts: [String] = []
-        for sentence in sentences {
-            var chunk = ""
-            for word in sentence.split(whereSeparator: { $0.isWhitespace }) {
-                let token = String(word)
-                if !chunk.isEmpty && (chunk.count + token.count + 1 > 68 ||
-                                      chunk.split(separator: " ").count >= 11) {
-                    parts.append(chunk)
-                    chunk = token
-                } else {
-                    chunk = chunk.isEmpty ? token : chunk + " " + token
-                }
-            }
-            if !chunk.isEmpty { parts.append(chunk) }
-        }
-        let finished = parts.isEmpty ? ["· · ·"] : parts
+        let parts = CaptionSegmenter.split(text)
+        let result = parts.isEmpty ? ["· · ·"] : parts
         cachedCaptionText = text
-        cachedCaptions = finished
-        return finished
+        cachedCaptions = result
+        return result
     }
 
     private func drawCaptionPages(scene: TextScene, in ctx: CGContext, width: CGFloat,
                                   height: CGFloat, time: Double, font: UIFont, color: UIColor) {
         let chunks = captionChunks(scene.text)
-        let totalWeight = chunks.reduce(0.0) { result, part in
-            result + Double(max(part.count, 14))
-        }
-        let elapsedWeight = min(0.999999, max(0, time / max(scene.duration, 0.1))) * totalWeight
-        var accumulated = 0.0
+        let hasSpeechCues = scene.captionCues.count == chunks.count
+            && zip(scene.captionCues, chunks).allSatisfy { pair in pair.0.text == pair.1 }
         var selectedIndex = chunks.count - 1
         var localProgress = 1.0
-        for (index, part) in chunks.enumerated() {
-            let weight = Double(max(part.count, 14))
-            if elapsedWeight < accumulated + weight {
-                selectedIndex = index
-                localProgress = (elapsedWeight - accumulated) / weight
-                break
+        if hasSpeechCues {
+            selectedIndex = scene.captionCues.firstIndex(where: { time < $0.endTime }) ?? (chunks.count - 1)
+            let cue = scene.captionCues[selectedIndex]
+            let length = max(0.01, cue.endTime - cue.startTime)
+            localProgress = min(1, max(0, (time - cue.startTime) / length))
+        } else {
+            // Fallback for projects without generated speech timestamps.
+            let totalWeight = chunks.reduce(0.0) { $0 + Double(max($1.count, 14)) }
+            let elapsedWeight = min(0.999999, max(0, time / max(scene.duration, 0.1))) * totalWeight
+            var accumulated = 0.0
+            for (index, part) in chunks.enumerated() {
+                let weight = Double(max(part.count, 14))
+                if elapsedWeight < accumulated + weight {
+                    selectedIndex = index
+                    localProgress = (elapsedWeight - accumulated) / weight
+                    break
+                }
+                accumulated += weight
             }
-            accumulated += weight
         }
         let message = chunks[selectedIndex]
         let viewport = CGRect(x: width * 0.08, y: height * 0.67,
