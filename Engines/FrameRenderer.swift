@@ -2,6 +2,20 @@ import UIKit
 
 /// One renderer is shared by live preview and file export to ensure matching timing.
 final class FrameRenderer {
+    static let shared = FrameRenderer()
+    private let cacheLock = NSLock()
+    private var cachedKey = ""
+    private var cachedValue: ScrambledText?
+    private func scramble(for scene: TextScene) -> ScrambledText {
+        let key = String(describing: scene.id) + "|" + String(scene.seed) + "|" + String(scene.noiseCount) + "|" + scene.text
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if cachedKey == key, let cachedValue { return cachedValue }
+        let value = ScrambleEngine.generate(text: scene.text, noiseCount: scene.noiseCount, seed: scene.seed)
+        cachedKey = key
+        cachedValue = value
+        return value
+    }
     func render(scene: TextScene, time: Double, size: CGSize) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
@@ -14,10 +28,10 @@ final class FrameRenderer {
             let progress = CGFloat(min(1, max(0, time / max(scene.duration * 0.83, 0.01))))
             let accent = scene.style.accent.uiColor
             var rng = SeededGenerator(seed: scene.seed)
-            let scrambled = ScrambleEngine.generate(text: scene.text, noiseCount: scene.noiseCount, seed: scene.seed)
+            let scrambled = scramble(for: scene)
 
             // Subtle star/dust field, with style-specific visual treatments.
-            for _ in 0..<110 {
+            for _ in 0..<55 {
                 let x = CGFloat(Int.random(in: 0..<max(1, Int(W)), using: &rng))
                 let y = CGFloat(Int.random(in: 0..<max(1, Int(H)), using: &rng))
                 let radius = CGFloat(Int.random(in: 1...3, using: &rng)) * W / 720
@@ -44,7 +58,7 @@ final class FrameRenderer {
             let gridY = H * 0.23
             let revealed = Int(Double(scrambled.messageCharacters.count) * Double(progress))
             let litPositions = Set(scrambled.sourceIndices.prefix(revealed))
-            for (index, letter) in scrambled.visible.enumerated() {
+            for (index, letter) in scrambled.visible.prefix(180).enumerated() {
                 let row = index / cols, col = index % cols
                 let x = startX + CGFloat(col) * cellW
                 let y = gridY + CGFloat(row) * cellH
@@ -100,18 +114,59 @@ final class FrameRenderer {
                 }
             }
 
-            let msgFont = UIFont.systemFont(ofSize: max(25, W * 0.065), weight: .bold)
-            let message = scrambled.messageCharacters.prefix(revealed).joined()
-            let finalText = message.isEmpty ? "· · ·" : message
-            let move: CGFloat = (1 - progress) * (scene.style == .kineticType ? 95 : 32) * W / 720
-            let textRect = CGRect(x: W * 0.07, y: H * 0.69 + move, width: W * 0.86, height: H * 0.15)
-            ctx.saveGState()
-            ctx.setShadow(offset: .zero, blur: scene.style == .neonLight ? W*0.035 : W*0.015, color: accent.withAlphaComponent(0.8).cgColor)
-            drawText(finalText, in: textRect, font: msgFont, color: scene.style == .paperFold ? .white : accent, alignment: .center)
-            ctx.restoreGState()
+            let msgFont = UIFont.systemFont(ofSize: max(24, W * 0.061), weight: .bold)
+            if scene.textMotion == .scrollUp {
+                drawScroll(scene: scene, in: ctx, width: W, height: H,
+                           time: time, font: msgFont,
+                           color: scene.style == .paperFold ? .white : accent)
+            } else {
+                let message = scrambled.messageCharacters.prefix(revealed).joined()
+                let finalText = message.isEmpty ? "· · ·" : message
+                let move: CGFloat = (1 - progress) * (scene.style == .kineticType ? 95 : 32) * W / 720
+                let textRect = CGRect(x: W * 0.07, y: H * 0.69 + move, width: W * 0.86, height: H * 0.15)
+                ctx.saveGState()
+                ctx.setShadow(offset: .zero, blur: W * 0.01, color: accent.withAlphaComponent(0.7).cgColor)
+                drawText(finalText, in: textRect, font: msgFont,
+                         color: scene.style == .paperFold ? .white : accent, alignment: .center)
+                ctx.restoreGState()
+            }
             let footer = String(format: "%02d%%   •   %@", Int(progress * 100), scene.title.uppercased())
             drawText(footer, in: CGRect(x: W*0.07, y: H*0.94, width: W*0.86, height: 28), font: .monospacedSystemFont(ofSize: max(10, W*0.021), weight: .light), color: .white.withAlphaComponent(0.42), alignment: .center)
         }
+    }
+
+    private func drawScroll(scene: TextScene, in ctx: CGContext, width: CGFloat,
+                            height: CGFloat, time: Double, font: UIFont, color: UIColor) {
+        let viewport = CGRect(x: width * 0.065, y: height * 0.53,
+                              width: width * 0.87, height: height * 0.38)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        paragraph.lineSpacing = font.pointSize * 0.25
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font, .foregroundColor: color, .paragraphStyle: paragraph
+        ]
+        let text = scene.text.isEmpty ? "· · ·" : scene.text
+        let attributed = NSAttributedString(string: text, attributes: attributes)
+        let maxWidth = viewport.width * 0.97
+        let bounds = attributed.boundingRect(
+            with: CGSize(width: maxWidth, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil
+        )
+        let textHeight = max(ceil(bounds.height) + font.lineHeight, font.lineHeight)
+        let speed = max(0.25, min(3, scene.scrollSpeed))
+        let fraction = CGFloat(min(1, max(0, time * speed / max(scene.duration, 0.1))))
+        let initialY = viewport.maxY + font.lineHeight
+        let finalY = viewport.minY - textHeight - font.lineHeight
+        let y = initialY + (finalY - initialY) * fraction
+        ctx.saveGState()
+        ctx.clip(to: viewport)
+        (text as NSString).draw(
+            in: CGRect(x: viewport.minX + viewport.width * 0.015, y: y,
+                       width: maxWidth, height: textHeight),
+            withAttributes: attributes
+        )
+        ctx.restoreGState()
     }
 
     private func drawScanline(ctx: CGContext, y: CGFloat, width: CGFloat, accent: UIColor) {
