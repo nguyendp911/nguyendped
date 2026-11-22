@@ -147,6 +147,10 @@ struct StudioView: View {
                 }
             }
             .pickerStyle(.segmented)
+            if store.selected.textMotion == .pages {
+                Text("Mỗi lần chỉ hiển thị một cụm khoảng 1–3 dòng, tự chuyển với hiệu ứng nhẹ. Thích hợp cho lời kể và thuyết minh.")
+                    .font(.caption).foregroundStyle(.gray)
+            }
             if store.selected.textMotion == .scrollUp {
                 HStack {
                     Text("Tốc độ cuộn").foregroundStyle(.gray)
@@ -158,7 +162,7 @@ struct StudioView: View {
                     get: { store.selected.scrollSpeed },
                     set: { newValue in store.updateScene { $0.scrollSpeed = newValue } }
                 ), in: 0.5...2.0, step: 0.1).tint(.cyan)
-                Text("Cuộn chữ từ dưới lên, tự ngắt dòng khi nội dung dài.")
+                Text("Dành cho hiệu ứng credit; không nên dùng cho thuyết minh nội dung dài.")
                     .font(.caption).foregroundStyle(.gray)
             }
             sectionTitle("02", "Chọn phong cách")
@@ -233,7 +237,7 @@ struct StudioView: View {
         VStack(alignment: .leading, spacing: 17) {
             sectionTitle("MUSIC STUDIO", "Nhạc nền & âm thanh")
             sectionTitle("THUYẾT MINH", "Giọng đọc đồng bộ văn bản")
-            Text("Tạo giọng đọc tiếng Việt cho từng cảnh. Ứng dụng đo thời lượng audio, tự chỉnh thời gian cảnh và cho chữ chạy từ dưới lên theo giọng đọc.")
+            Text("Tạo giọng đọc tiếng Việt cho từng cảnh. Ứng dụng đo thời lượng audio, tự chỉnh thời gian cảnh và hiển thị từng câu ngắn thay vì cuộn cả đoạn văn.")
                 .font(.subheadline).foregroundStyle(.secondary)
             HStack {
                 Text("Tốc độ giọng đọc")
@@ -431,7 +435,7 @@ struct StudioView: View {
 
                 // Keep a short visual tail so the final line leaves the viewport.
                 updatedScenes[index].duration = seconds + 0.4
-                updatedScenes[index].textMotion = .scrollUp
+                updatedScenes[index].textMotion = .pages
                 updatedScenes[index].scrollSpeed = 1.0
                 newClips.append(AudioClip(relativeFilename: filename,
                                           displayName: "Thuyết minh - \(scene.title)",
