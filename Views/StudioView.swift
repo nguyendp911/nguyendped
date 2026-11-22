@@ -18,6 +18,7 @@ struct StudioView: View {
     @State private var speechRate: Double = 0.5
     @State private var creatingNarration = false
     @State private var narrationSceneNumber = 0
+    @State private var showNewProjectConfirmation = false
     @FocusState private var isEditingText: Bool
 
     enum StudioTab: String, CaseIterable { case create = "Tạo nhanh", scenes = "Timeline", audio = "Âm nhạc", export = "Xuất video" }
@@ -48,6 +49,16 @@ struct StudioView: View {
         .sheet(isPresented: $isSharing) {
             if let url = store.exportedURL { ShareSheet(items: [url]) }
         }
+        .confirmationDialog("Tạo video mới?", isPresented: $showNewProjectConfirmation, titleVisibility: .visible) {
+            Button("Tạo dự án trống") {
+                store.newProject()
+                tab = .create
+                savedToPhotos = false
+                previewPlaying = true
+            }
+        } message: {
+            Text("Timeline và audio sẽ được làm mới. Bản đang chỉnh vẫn được giữ dưới mục Bản nháp trước.")
+        }
         .alert("Thông báo", isPresented: Binding(get: { store.toast != nil }, set: { if !$0 { store.toast = nil } })) {
             Button("Đóng", role: .cancel) { store.toast = nil }
         } message: { Text(store.toast ?? "") }
@@ -77,6 +88,23 @@ struct StudioView: View {
             Spacer(minLength: 2)
             // Navigation is an on-demand menu, not a persistent tab bar.
             Menu {
+                Button {
+                    showNewProjectConfirmation = true
+                } label: {
+                    Label("Tạo video mới", systemImage: "plus.square")
+                }
+                .disabled(isExporting || creatingNarration)
+                if store.hasPreviousDraft {
+                    Button {
+                        store.restorePreviousProject()
+                        tab = .create
+                        savedToPhotos = false
+                    } label: {
+                        Label("Mở bản nháp trước", systemImage: "clock.arrow.circlepath")
+                    }
+                    .disabled(isExporting || creatingNarration)
+                }
+                Divider()
                 ForEach(StudioTab.allCases, id: \.rawValue) { item in
                     Button {
                         tab = item
@@ -126,6 +154,14 @@ struct StudioView: View {
 
     private var quickCreator: some View {
         VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Label("Dự án mới", systemImage: "doc.badge.plus")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Làm mới") { showNewProjectConfirmation = true }
+                    .font(.caption.bold())
+                    .disabled(isExporting || creatingNarration)
+            }
             sectionTitle("01", "Thông điệp")
             TextEditor(text: Binding(get: { store.selected.text }, set: { text in store.updateScene { $0.text = String(text.prefix(2000)) } }))
                 .font(.title3).scrollContentBackground(.hidden).frame(minHeight: 100)
@@ -491,6 +527,9 @@ struct StudioView: View {
             TextScene(text: content, duration: min(18, max(5, Double(content.count) * 0.13)), style: index.isMultiple(of: 2) ? sceneStyle : MotionStyle.allCases[index % MotionStyle.allCases.count], title: "Cảnh \(index + 1)")
         }
         store.selectedSceneID = store.project.scenes.first?.id
+        // Splitting replaces this project's timeline. Generated narration from
+        // the previous timeline must not be mixed into its new scene offsets.
+        store.project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
         store.save()
         store.toast = "Đã tạo \(parts.count) cảnh"
     }
