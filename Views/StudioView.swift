@@ -15,6 +15,14 @@ struct StudioView: View {
     @State private var previewPlaying = true
     @State private var previewTime: Double = 0
     @State private var selectedTemplate = "Love Message"
+    @State private var splitSceneStyleMode: SplitSceneStyleMode = .keep
+    @State private var confirmMergeScenes = false
+
+    private enum SplitSceneStyleMode: String, CaseIterable, Identifiable {
+        case keep = "Dùng chung một mẫu"
+        case varied = "Đổi mẫu theo cảnh"
+        var id: String { rawValue }
+    }
     @StateObject private var liveVoice = VoiceLivePreview()
     @State private var autoVoicePreview = true
     @State private var voicePreviewTask: Task<Void, Never>?
@@ -80,6 +88,11 @@ struct StudioView: View {
         }
         .sheet(isPresented: $isSharing) {
             if let url = store.exportedURL { ShareSheet(items: [url]) }
+        }
+        .confirmationDialog("Gộp tất cả cảnh?", isPresented: $confirmMergeScenes, titleVisibility: .visible) {
+            Button("Gộp thành một cảnh") { mergeAllScenes() }
+        } message: {
+            Text("Văn bản của các cảnh sẽ được nối thành một cảnh duy nhất, dùng chung phong cách. Thuyết minh cũ sẽ cần tạo lại.")
         }
         .confirmationDialog("Tạo video mới?", isPresented: $showNewProjectConfirmation, titleVisibility: .visible) {
             Button("Tạo dự án trống") {
@@ -240,9 +253,33 @@ struct StudioView: View {
                 Slider(value: Binding(get: { store.selected.duration }, set: { v in store.updateScene { $0.duration = v } }), in: 3...180, step: 1).tint(.cyan)
                 Text("\(Int(store.selected.duration))s").monospacedDigit().frame(width: 38)
             }
-            sectionTitle("04", "Tự động chia cảnh")
-            Button { splitIntoScenes() } label: { Label("Chia câu thành các cảnh", systemImage: "text.alignleft") }.buttonStyle(.bordered)
-            Text("Chia theo dấu câu, không dùng AI hay dịch vụ mạng. Văn bản gốc vẫn được giữ nguyên theo từng đoạn.").font(.caption).foregroundStyle(.gray)
+            sectionTitle("04", "Bố cục cảnh")
+            Text("Bạn có thể giữ toàn bộ nội dung trong một cảnh. Chỉ chia cảnh khi muốn tách riêng các đoạn văn bản.")
+                .font(.caption).foregroundStyle(.gray)
+            Picker("Phong cách khi chia", selection: $splitSceneStyleMode) {
+                ForEach(SplitSceneStyleMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text(splitSceneStyleMode == .keep
+                 ? "Tất cả cảnh mới giữ nguyên mẫu, màu và kiểu chữ đang chọn."
+                 : "Chỉ khi bật tùy chọn này, mỗi cảnh mới được phân phong cách khác nhau.")
+                .font(.caption).foregroundStyle(.gray)
+            Button { splitIntoScenes() } label: {
+                Label("Chia nội dung thành các cảnh", systemImage: "square.stack.3d.up")
+            }
+            .buttonStyle(.bordered)
+            .disabled(creatingNarration || isExporting)
+            if store.project.scenes.count > 1 {
+                Button {
+                    confirmMergeScenes = true
+                } label: {
+                    Label("Gộp về một cảnh, một mẫu", systemImage: "square.on.square")
+                }
+                .buttonStyle(.bordered)
+                .disabled(creatingNarration || isExporting)
+            }
             sectionTitle("05", "Mẫu dựng nhanh")
             Picker("Mẫu", selection: $selectedTemplate) {
                 ForEach(["Love Message", "Cinematic Story", "Technology Intro", "Dark Fantasy", "Motivational Video", "Luxury Presentation"], id: \.self) { Text($0) }
@@ -639,20 +676,56 @@ struct StudioView: View {
     }
 
     private func splitIntoScenes() {
-        let input = store.selected.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = input.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        guard parts.count > 1 else { store.toast = "Nhập nhiều câu, ngăn bằng dấu chấm hoặc xuống dòng"; return }
-        let sceneStyle = store.selected.style
+        // Do not split or append merely because a template is applied.
+        // This is an explicit user action.
+        let source = store.selected
+        let input = source.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = CaptionSegmenter.split(input)
+        guard parts.count > 1 else {
+            store.toast = "Nội dung hiện chỉ có một đoạn. Bạn có thể giữ một cảnh, không cần chia."
+            return
+        }
+
         store.project.scenes = parts.enumerated().map { index, content in
-            TextScene(text: content, duration: min(18, max(5, Double(content.count) * 0.13)), style: index.isMultiple(of: 2) ? sceneStyle : MotionStyle.allCases[index % MotionStyle.allCases.count], title: "Cảnh \(index + 1)")
+            var scene = source
+            scene.id = UUID()
+            scene.text = content
+            scene.title = "Cảnh \(index + 1)"
+            scene.duration = min(30, max(4, Double(content.count) * 0.13))
+            scene.captionCues = []
+            if splitSceneStyleMode == .varied {
+                let style = MotionStyle.allCases[index % MotionStyle.allCases.count]
+                scene.style = style
+                scene.foreground = style.accent
+            }
+            return scene
         }
         store.selectedSceneID = store.project.scenes.first?.id
-        // Splitting replaces this project's timeline. Generated narration from
-        // the previous timeline must not be mixed into its new scene offsets.
         store.project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
         store.save()
-        store.toast = "Đã tạo \(parts.count) cảnh"
+        store.toast = splitSceneStyleMode == .keep
+            ? "Đã tách \(parts.count) cảnh dùng cùng một mẫu."
+            : "Đã tách \(parts.count) cảnh với các mẫu khác nhau."
+    }
+
+    private func mergeAllScenes() {
+        guard store.project.scenes.count > 1 else { return }
+        let original = store.project.scenes
+        // Preserve all user-authored text, in timeline order.
+        let content = original.map(\.text)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+        var merged = original[0]
+        merged.id = UUID()
+        merged.title = "Cảnh 1"
+        merged.text = content
+        merged.duration = original.reduce(0) { $0 + $1.duration }
+        merged.captionCues = []
+        store.project.scenes = [merged]
+        store.selectedSceneID = merged.id
+        store.project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+        store.save()
+        store.toast = "Đã gộp thành một cảnh và giữ nguyên toàn bộ nội dung."
     }
 
     private func applyTemplate() {
