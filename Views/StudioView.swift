@@ -12,6 +12,7 @@ struct StudioView: View {
     @State private var previewPlaying = true
     @State private var previewTime: Double = 0
     @State private var selectedTemplate = "Love Message"
+    @FocusState private var isEditingText: Bool
 
     enum StudioTab: String, CaseIterable { case create = "Tạo nhanh", scenes = "Timeline", audio = "Âm nhạc", export = "Xuất video" }
 
@@ -97,23 +98,22 @@ struct StudioView: View {
     }
 
     private var preview: some View {
-        VStack(spacing: 10) {
-            GeometryReader { geometry in
-                let size = geometry.size
-                TimelineView(.animation(paused: !previewPlaying)) { timeline in
-                    let phase = previewPlaying ? timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: max(0.5, store.selected.duration)) : previewTime
-                    let image = FrameRenderer().render(scene: store.selected, time: phase, size: CGSize(width: 540, height: 540 * size.height / max(size.width, 1)))
-                    Image(uiImage: image).resizable().interpolation(.medium).frame(width: size.width, height: size.height).clipped()
-                }
-            }
-            .frame(height: 215)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(.cyan.opacity(0.25)))
+        VStack(spacing: 8) {
+            AnimatedPreview(scene: store.selected, playing: previewPlaying && !isEditingText)
+                .frame(height: 215)
+                .clipShape(RoundedRectangle(cornerRadius: 15))
+                .overlay(RoundedRectangle(cornerRadius: 15).stroke(.cyan.opacity(0.20)))
             HStack {
-                Button { previewPlaying.toggle() } label: { Label(previewPlaying ? "Dừng" : "Phát", systemImage: previewPlaying ? "pause.fill" : "play.fill") }
+                Button { previewPlaying.toggle() } label: {
+                    Label(previewPlaying ? "Dừng" : "Phát",
+                          systemImage: previewPlaying ? "pause.fill" : "play.fill")
+                }
                 Spacer()
-                Text("\(store.selected.style.rawValue)  •  \(Int(store.selected.duration))s").font(.caption).foregroundStyle(.gray)
-                Button { store.updateScene { $0.seed = UInt64.random(in: 1...UInt64.max) } } label: { Image(systemName: "arrow.triangle.2.circlepath") }
+                Text("\(store.selected.style.rawValue) • \(Int(store.selected.duration))s")
+                    .font(.caption).foregroundStyle(.gray).lineLimit(1)
+                Button { store.updateScene { $0.seed = UInt64.random(in: 1...UInt64.max) } } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
             }.buttonStyle(.bordered)
         }
     }
@@ -121,8 +121,9 @@ struct StudioView: View {
     private var quickCreator: some View {
         VStack(alignment: .leading, spacing: 18) {
             sectionTitle("01", "Thông điệp")
-            TextEditor(text: Binding(get: { store.selected.text }, set: { text in store.updateScene { $0.text = String(text.prefix(200)) } }))
+            TextEditor(text: Binding(get: { store.selected.text }, set: { text in store.updateScene { $0.text = String(text.prefix(2000)) } }))
                 .font(.title3).scrollContentBackground(.hidden).frame(minHeight: 100)
+                .focused($isEditingText)
                 .padding(10).background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
             HStack {
                 Text("Ký tự nhiễu").foregroundStyle(.gray)
@@ -130,11 +131,35 @@ struct StudioView: View {
                 Text("\(store.selected.noiseCount)").monospacedDigit().foregroundStyle(.cyan)
             }
             Slider(value: Binding(get: { Double(store.selected.noiseCount) }, set: { n in store.updateScene { $0.noiseCount = Int(n) } }), in: 0...300, step: 10).tint(.cyan)
+            sectionTitle("CHỮ", "Hướng chuyển động")
+            Picker("Hiệu ứng văn bản", selection: Binding(
+                get: { store.selected.textMotion },
+                set: { value in store.updateScene { $0.textMotion = value } }
+            )) {
+                ForEach(TextMotion.allCases) { motion in
+                    Text(motion.rawValue).tag(motion)
+                }
+            }
+            .pickerStyle(.segmented)
+            if store.selected.textMotion == .scrollUp {
+                HStack {
+                    Text("Tốc độ cuộn").foregroundStyle(.gray)
+                    Spacer()
+                    Text(String(format: "%.1fx", store.selected.scrollSpeed))
+                        .foregroundStyle(.cyan).monospacedDigit()
+                }
+                Slider(value: Binding(
+                    get: { store.selected.scrollSpeed },
+                    set: { newValue in store.updateScene { $0.scrollSpeed = newValue } }
+                ), in: 0.5...2.0, step: 0.1).tint(.cyan)
+                Text("Cuộn chữ từ dưới lên, tự ngắt dòng khi nội dung dài.")
+                    .font(.caption).foregroundStyle(.gray)
+            }
             sectionTitle("02", "Chọn phong cách")
             styleGallery
             sectionTitle("03", "Thời lượng cảnh")
             HStack {
-                Slider(value: Binding(get: { store.selected.duration }, set: { v in store.updateScene { $0.duration = v } }), in: 3...30, step: 1).tint(.cyan)
+                Slider(value: Binding(get: { store.selected.duration }, set: { v in store.updateScene { $0.duration = v } }), in: 3...180, step: 1).tint(.cyan)
                 Text("\(Int(store.selected.duration))s").monospacedDigit().frame(width: 38)
             }
             sectionTitle("04", "Tự động chia cảnh")
@@ -361,4 +386,31 @@ struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+private struct AnimatedPreview: View {
+    let scene: TextScene
+    let playing: Bool
+    private let origin = Date()
+
+    var body: some View {
+        GeometryReader { geometry in
+            // Ten preview frames/second avoid recompositing huge UIImages
+            // at the device display refresh rate while editing.
+            TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+                let phase = playing
+                    ? timeline.date.timeIntervalSince(origin).truncatingRemainder(dividingBy: max(scene.duration, 0.5))
+                    : 0
+                let previewWidth: CGFloat = 340
+                let previewHeight = previewWidth * geometry.size.height / max(geometry.size.width, 1)
+                Image(uiImage: FrameRenderer.shared.render(
+                    scene: scene, time: phase,
+                    size: CGSize(width: previewWidth, height: previewHeight)))
+                    .resizable()
+                    .interpolation(.medium)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            }
+        }
+    }
 }
