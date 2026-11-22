@@ -93,6 +93,44 @@ enum CaptionSegmenter {
     }
 }
 
+enum VoiceStyle: String, Codable, CaseIterable, Identifiable {
+    case natural = "Tự nhiên"
+    case warm = "Trầm ấm"
+    case gentle = "Dịu dàng"
+    case energetic = "Năng động"
+    case storyteller = "Kể chuyện"
+    case custom = "Tùy chỉnh"
+    var id: String { rawValue }
+    var settings: (rate: Float, pitch: Float, volume: Float) {
+        switch self {
+        case .natural: (0.50, 1.00, 1.0)
+        case .warm: (0.46, 0.82, 1.0)
+        case .gentle: (0.45, 1.12, 0.86)
+        case .energetic: (0.57, 1.17, 1.0)
+        case .storyteller: (0.47, 0.94, 0.95)
+        case .custom: (0.50, 1.00, 1.0)
+        }
+    }
+}
+
+struct VoiceConfiguration: Codable, Equatable {
+    var voiceIdentifier = ""
+    var style: VoiceStyle = .natural
+    var rate: Float = 0.50
+    var pitch: Float = 1.00
+    var volume: Float = 1.00
+
+    mutating func apply(_ preset: VoiceStyle) {
+        style = preset
+        if preset != .custom {
+            let value = preset.settings
+            rate = value.rate
+            pitch = value.pitch
+            volume = value.volume
+        }
+    }
+}
+
 struct TextScene: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var text: String
@@ -106,18 +144,20 @@ struct TextScene: Identifiable, Codable, Equatable {
     var textMotion: TextMotion = .pages
     var scrollSpeed: Double = 1.0
     var captionCues: [CaptionCue] = []
+    var voiceConfiguration: VoiceConfiguration = VoiceConfiguration()
     enum CodingKeys: String, CodingKey {
-        case id, text, duration, style, seed, noiseCount, foreground, title, transitionDuration, textMotion, scrollSpeed, captionCues
+        case id, text, duration, style, seed, noiseCount, foreground, title, transitionDuration, textMotion, scrollSpeed, captionCues, voiceConfiguration
     }
     init(id: UUID = UUID(), text: String, duration: Double = 8, style: MotionStyle = .cyberMatrix,
          seed: UInt64 = UInt64.random(in: 1...UInt64.max), noiseCount: Int = 70,
          foreground: RGBAColor = .cyan, title: String = "Cảnh 1",
          transitionDuration: Double = 0.4, textMotion: TextMotion = .pages, scrollSpeed: Double = 1.0,
-         captionCues: [CaptionCue] = []) {
+         captionCues: [CaptionCue] = [], voiceConfiguration: VoiceConfiguration = VoiceConfiguration()) {
         self.id = id; self.text = text; self.duration = duration; self.style = style
         self.seed = seed; self.noiseCount = noiseCount; self.foreground = foreground
         self.title = title; self.transitionDuration = transitionDuration
         self.textMotion = textMotion; self.scrollSpeed = scrollSpeed; self.captionCues = captionCues
+        self.voiceConfiguration = voiceConfiguration
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -133,6 +173,7 @@ struct TextScene: Identifiable, Codable, Equatable {
         textMotion = try c.decodeIfPresent(TextMotion.self, forKey: .textMotion) ?? .pages
         scrollSpeed = try c.decodeIfPresent(Double.self, forKey: .scrollSpeed) ?? 1.0
         captionCues = try c.decodeIfPresent([CaptionCue].self, forKey: .captionCues) ?? []
+        voiceConfiguration = try c.decodeIfPresent(VoiceConfiguration.self, forKey: .voiceConfiguration) ?? VoiceConfiguration()
     }
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id && lhs.text == rhs.text && lhs.duration == rhs.duration
@@ -140,6 +181,7 @@ struct TextScene: Identifiable, Codable, Equatable {
         && lhs.foreground == rhs.foreground && lhs.title == rhs.title
         && lhs.transitionDuration == rhs.transitionDuration && lhs.textMotion == rhs.textMotion
         && lhs.scrollSpeed == rhs.scrollSpeed && lhs.captionCues == rhs.captionCues
+        && lhs.voiceConfiguration == rhs.voiceConfiguration
     }
 }
 
