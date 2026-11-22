@@ -156,7 +156,7 @@ final class FrameRenderer {
         let textHeight = max(ceil(bounds.height) + font.lineHeight, font.lineHeight)
         let speed = max(0.25, min(3, scene.scrollSpeed))
         let fraction = CGFloat(min(1, max(0, time * speed / max(scene.duration, 0.1))))
-        let initialY = viewport.maxY + font.lineHeight
+        let initialY = viewport.maxY - font.lineHeight * 1.1
         let finalY = viewport.minY - textHeight - font.lineHeight
         let y = initialY + (finalY - initialY) * fraction
         ctx.saveGState()
