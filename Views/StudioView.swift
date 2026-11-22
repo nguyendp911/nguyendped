@@ -237,7 +237,7 @@ struct StudioView: View {
         VStack(alignment: .leading, spacing: 17) {
             sectionTitle("MUSIC STUDIO", "Nhạc nền & âm thanh")
             sectionTitle("THUYẾT MINH", "Giọng đọc đồng bộ văn bản")
-            Text("Tạo giọng đọc tiếng Việt cho từng cảnh. Ứng dụng đo thời lượng audio, tự chỉnh thời gian cảnh và hiển thị từng câu ngắn thay vì cuộn cả đoạn văn.")
+            Text("Ứng dụng tạo giọng đọc cho từng cụm câu, đo thời lượng audio thực tế và tự chuyển chữ đúng theo giọng đọc.")
                 .font(.subheadline).foregroundStyle(.secondary)
             HStack {
                 Text("Tốc độ giọng đọc")
@@ -257,7 +257,7 @@ struct StudioView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(creatingNarration || isExporting)
-            Text("Giọng đọc sử dụng tiếng Việt có sẵn trên iPhone. Bản này đồng bộ theo thời lượng mỗi cảnh, chưa căn từng từ chính xác.")
+            Text("Giọng đọc sử dụng tiếng Việt có sẵn trên iPhone. Mỗi cụm câu dùng mốc thời gian từ audio thực tế. Chưa căn chính xác từng từ trong cụm.")
                 .font(.caption).foregroundStyle(.gray)
             Divider().overlay(.white.opacity(0.08))
 
@@ -422,43 +422,62 @@ struct StudioView: View {
         let originalScenes = store.project.scenes
         var updatedScenes = originalScenes
         var newClips: [AudioClip] = []
-        var generatedFiles: [URL] = []
+        var pendingFiles: [(temp: URL, final: URL)] = []
+        var committedFiles: [URL] = []
         var offset = 0.0
         do {
             for index in updatedScenes.indices {
                 narrationSceneNumber = index + 1
                 let scene = originalScenes[index]
-                let filename = "voiceover-\(scene.id.uuidString).caf"
-                let tempURL = store.documents.appendingPathComponent("render-\(UUID().uuidString).caf")
-                let seconds = try await speech.create(text: scene.text, rate: Float(speechRate), output: tempURL)
-                generatedFiles.append(tempURL)
+                let chunks = CaptionSegmenter.split(scene.text)
+                guard !chunks.isEmpty else { throw NarrationError.emptyAudio }
 
-                // Keep a short visual tail so the final line leaves the viewport.
-                updatedScenes[index].duration = seconds + 0.4
+                // Create fresh files so old narration survives until all
+                // new speech chunks and timings have been generated.
+                let filename = "voiceover-\(UUID().uuidString).caf"
+                let tempURL = store.documents.appendingPathComponent("render-\(UUID().uuidString).caf")
+                let finalURL = store.documents.appendingPathComponent(filename)
+                pendingFiles.append((temp: tempURL, final: finalURL))
+                let cues = try await speech.createTimedTrack(
+                    chunks: chunks, rate: Float(speechRate), output: tempURL)
+                guard let last = cues.last, last.endTime > 0 else {
+                    throw NarrationError.emptyAudio
+                }
+                updatedScenes[index].captionCues = cues
+                updatedScenes[index].duration = last.endTime + 0.35
                 updatedScenes[index].textMotion = .pages
-                updatedScenes[index].scrollSpeed = 1.0
-                newClips.append(AudioClip(relativeFilename: filename,
-                                          displayName: "Thuyết minh - \(scene.title)",
-                                          startTime: offset, sourceIn: 0,
-                                          duration: seconds, volume: 1,
-                                          fadeIn: 0, fadeOut: 0))
-                offset += seconds + 0.4
+                newClips.append(AudioClip(
+                    relativeFilename: filename,
+                    displayName: "Thuyết minh - \(scene.title)",
+                    startTime: offset, sourceIn: 0, duration: last.endTime,
+                    volume: 1, fadeIn: 0, fadeOut: 0))
+                offset += updatedScenes[index].duration
             }
 
-            // Commit only after all scenes succeed, preserving the prior project on error.
-            for (index, url) in generatedFiles.enumerated() {
-                let dest = store.documents.appendingPathComponent(newClips[index].relativeFilename)
-                try? FileManager.default.removeItem(at: dest)
-                try FileManager.default.moveItem(at: url, to: dest)
+            for item in pendingFiles {
+                try FileManager.default.moveItem(at: item.temp, to: item.final)
+                committedFiles.append(item.final)
+            }
+            // Background music is retained. Replace only generated narration.
+            let oldNarration = store.project.audioClips.filter {
+                $0.relativeFilename.hasPrefix("voiceover-")
             }
             store.project.scenes = updatedScenes
-            store.project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+            store.project.audioClips.removeAll {
+                $0.relativeFilename.hasPrefix("voiceover-")
+            }
             store.project.audioClips.append(contentsOf: newClips)
             store.save()
-            store.toast = "Đã tạo giọng đọc cho \(newClips.count) cảnh và căn thời gian chữ với thuyết minh."
+            for old in oldNarration {
+                try? FileManager.default.removeItem(
+                    at: store.documents.appendingPathComponent(old.relativeFilename))
+            }
+            let totalCaptions = updatedScenes.reduce(0) { $0 + $1.captionCues.count }
+            store.toast = "Đã căn \(totalCaptions) cụm câu theo thời lượng giọng đọc thực tế. Video sẽ chuyển chữ đúng ở các mốc audio."
         } catch {
-            for file in generatedFiles { try? FileManager.default.removeItem(at: file) }
-            store.toast = "Không tạo được giọng đọc: \(error.localizedDescription)"
+            for item in pendingFiles { try? FileManager.default.removeItem(at: item.temp) }
+            for file in committedFiles { try? FileManager.default.removeItem(at: file) }
+            store.toast = "Không thể đồng bộ thuyết minh: \(error.localizedDescription)"
         }
     }
 
