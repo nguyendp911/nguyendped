@@ -15,6 +15,9 @@ struct StudioView: View {
     @State private var previewPlaying = true
     @State private var previewTime: Double = 0
     @State private var selectedTemplate = "Love Message"
+    @State private var speechRate: Double = 0.5
+    @State private var creatingNarration = false
+    @State private var narrationSceneNumber = 0
     @FocusState private var isEditingText: Bool
 
     enum StudioTab: String, CaseIterable { case create = "Tạo nhanh", scenes = "Timeline", audio = "Âm nhạc", export = "Xuất video" }
@@ -229,6 +232,31 @@ struct StudioView: View {
     private var audioEditor: some View {
         VStack(alignment: .leading, spacing: 17) {
             sectionTitle("MUSIC STUDIO", "Nhạc nền & âm thanh")
+            sectionTitle("THUYẾT MINH", "Giọng đọc đồng bộ văn bản")
+            Text("Tạo giọng đọc tiếng Việt cho từng cảnh. Ứng dụng đo thời lượng audio, tự chỉnh thời gian cảnh và cho chữ chạy từ dưới lên theo giọng đọc.")
+                .font(.subheadline).foregroundStyle(.secondary)
+            HStack {
+                Text("Tốc độ giọng đọc")
+                Spacer()
+                Text(String(format: "%.2f", speechRate)).monospacedDigit().foregroundStyle(.cyan)
+            }.font(.subheadline)
+            Slider(value: $speechRate, in: 0.40...0.60, step: 0.01).tint(.cyan)
+            if creatingNarration {
+                ProgressView("Đang tạo giọng đọc cảnh \(narrationSceneNumber)/\(store.project.scenes.count)")
+                    .tint(.cyan)
+            }
+            Button {
+                Task { await createNarrationForAllScenes() }
+            } label: {
+                Label(creatingNarration ? "Đang tạo giọng đọc..." : "Tạo thuyết minh và đồng bộ tất cả cảnh",
+                      systemImage: "waveform.badge.mic")
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(creatingNarration || isExporting)
+            Text("Giọng đọc sử dụng tiếng Việt có sẵn trên iPhone. Bản này đồng bộ theo thời lượng mỗi cảnh, chưa căn từng từ chính xác.")
+                .font(.caption).foregroundStyle(.gray)
+            Divider().overlay(.white.opacity(0.08))
+
             Button { isImporting = true } label: { Label("Nhập audio từ Files", systemImage: "plus.circle.fill") }.buttonStyle(PrimaryButtonStyle())
             if store.project.audioClips.isEmpty {
                 Text("Chưa có nhạc. Bạn có thể tạo video không âm thanh hoặc nhập MP3, M4A, WAV từ Files.").font(.subheadline).foregroundStyle(.gray)
@@ -377,6 +405,56 @@ struct StudioView: View {
             store.toast = "Đã xuất và lưu video vào bộ sưu tập Ảnh!"
         } catch {
             store.toast = "Video đã render nhưng không lưu được vào Ảnh: \(error.localizedDescription). Bạn có thể thử lại bằng nút Lưu vào bộ sưu tập."
+        }
+    }
+
+    @MainActor
+    private func createNarrationForAllScenes() async {
+        guard !creatingNarration, !isExporting else { return }
+        creatingNarration = true
+        narrationSceneNumber = 0
+        defer { creatingNarration = false }
+        let speech = VietnameseNarrationEngine()
+        let originalScenes = store.project.scenes
+        var updatedScenes = originalScenes
+        var newClips: [AudioClip] = []
+        var generatedFiles: [URL] = []
+        var offset = 0.0
+        do {
+            for index in updatedScenes.indices {
+                narrationSceneNumber = index + 1
+                let scene = originalScenes[index]
+                let filename = "voiceover-\(scene.id.uuidString).caf"
+                let tempURL = store.documents.appendingPathComponent("render-\(UUID().uuidString).caf")
+                let seconds = try await speech.create(text: scene.text, rate: Float(speechRate), output: tempURL)
+                generatedFiles.append(tempURL)
+
+                // Keep a short visual tail so the final line leaves the viewport.
+                updatedScenes[index].duration = seconds + 0.4
+                updatedScenes[index].textMotion = .scrollUp
+                updatedScenes[index].scrollSpeed = 1.0
+                newClips.append(AudioClip(relativeFilename: filename,
+                                          displayName: "Thuyết minh - \(scene.title)",
+                                          startTime: offset, sourceIn: 0,
+                                          duration: seconds, volume: 1,
+                                          fadeIn: 0, fadeOut: 0))
+                offset += seconds + 0.4
+            }
+
+            // Commit only after all scenes succeed, preserving the prior project on error.
+            for (index, url) in generatedFiles.enumerated() {
+                let dest = store.documents.appendingPathComponent(newClips[index].relativeFilename)
+                try? FileManager.default.removeItem(at: dest)
+                try FileManager.default.moveItem(at: url, to: dest)
+            }
+            store.project.scenes = updatedScenes
+            store.project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+            store.project.audioClips.append(contentsOf: newClips)
+            store.save()
+            store.toast = "Đã tạo giọng đọc cho \(newClips.count) cảnh và căn thời gian chữ với thuyết minh."
+        } catch {
+            for file in generatedFiles { try? FileManager.default.removeItem(at: file) }
+            store.toast = "Không tạo được giọng đọc: \(error.localizedDescription)"
         }
     }
 
