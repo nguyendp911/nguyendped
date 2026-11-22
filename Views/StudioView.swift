@@ -60,11 +60,11 @@ struct StudioView: View {
             Image(systemName: "sparkles.rectangle.stack")
                 .font(.title2).foregroundStyle(.cyan)
             VStack(alignment: .leading, spacing: 2) {
-                Text("SECRET TEXT")
+                Text("ViePN")
                     .font(.system(size: 19, weight: .black, design: .rounded))
                     .tracking(1.1)
                     .lineLimit(1).minimumScaleFactor(0.75)
-                Text("Biến thông điệp thành motion video")
+                Text("tenungdung • Motion Studio")
                     .font(.caption2).foregroundStyle(.gray).lineLimit(1)
             }
             Spacer(minLength: 2)
