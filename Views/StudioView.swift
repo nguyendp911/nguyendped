@@ -15,11 +15,32 @@ struct StudioView: View {
     @State private var previewPlaying = true
     @State private var previewTime: Double = 0
     @State private var selectedTemplate = "Love Message"
-    @State private var speechRate: Double = 0.5
+    @StateObject private var liveVoice = VoiceLivePreview()
+    @State private var autoVoicePreview = true
+    @State private var voicePreviewTask: Task<Void, Never>?
     @State private var creatingNarration = false
     @State private var narrationSceneNumber = 0
     @State private var showNewProjectConfirmation = false
     @FocusState private var isEditingText: Bool
+
+    private var vietnameseVoices: [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.lowercased().hasPrefix("vi") }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    @MainActor
+    private func scheduleLiveVoicePreview() {
+        voicePreviewTask?.cancel()
+        guard autoVoicePreview, tab == .audio, !creatingNarration, !isExporting else { return }
+        let text = store.selected.text
+        let configuration = store.selected.voiceConfiguration
+        voicePreviewTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 550_000_000)
+            guard !Task.isCancelled else { return }
+            liveVoice.play(text: text, configuration: configuration)
+        }
+    }
 
     enum StudioTab: String, CaseIterable { case create = "Tạo nhanh", scenes = "Timeline", audio = "Âm nhạc", export = "Xuất video" }
 
@@ -40,6 +61,17 @@ struct StudioView: View {
             .scrollIndicators(.hidden)
         }
         .preferredColorScheme(.dark)
+        .onChange(of: store.selected.voiceConfiguration) { _ in scheduleLiveVoicePreview() }
+        .onChange(of: store.selected.text) { _ in scheduleLiveVoicePreview() }
+        .onChange(of: store.selectedSceneID) { _ in scheduleLiveVoicePreview() }
+        .onChange(of: autoVoicePreview) { enabled in
+            if enabled { scheduleLiveVoicePreview() }
+            else { voicePreviewTask?.cancel(); liveVoice.stop() }
+        }
+        .onChange(of: tab) { item in
+            if item == .audio { scheduleLiveVoicePreview() }
+            else { voicePreviewTask?.cancel(); liveVoice.stop() }
+        }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio, UTType(filenameExtension: "mp3") ?? .audio, UTType(filenameExtension: "wav") ?? .audio, UTType(filenameExtension: "m4a") ?? .audio], allowsMultipleSelection: false) { result in
             switch result {
             case .success(let urls): if let url = urls.first { store.importAudio(url) }
@@ -275,12 +307,90 @@ struct StudioView: View {
             sectionTitle("THUYẾT MINH", "Giọng đọc đồng bộ văn bản")
             Text("Ứng dụng tạo giọng đọc cho từng cụm câu, đo thời lượng audio thực tế và tự chuyển chữ đúng theo giọng đọc.")
                 .font(.subheadline).foregroundStyle(.secondary)
+            TextEditor(text: Binding(
+                get: { store.selected.text },
+                set: { value in store.updateScene { $0.text = String(value.prefix(2000)) } }
+            ))
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: 90)
+            .padding(10)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+            Text("Nội dung cảnh đang chọn • Nghe trực tiếp tối đa 250 ký tự đầu")
+                .font(.caption).foregroundStyle(.gray)
+            Picker("Giọng Tiếng Việt", selection: Binding(
+                get: { store.selected.voiceConfiguration.voiceIdentifier },
+                set: { newValue in store.updateScene { $0.voiceConfiguration.voiceIdentifier = newValue } }
+            )) {
+                Text("Giọng mặc định iPhone").tag("")
+                ForEach(vietnameseVoices, id: \.identifier) { voice in
+                    Text("\(voice.name) (\(voice.language))").tag(voice.identifier)
+                }
+            }
+            .pickerStyle(.menu)
+            if vietnameseVoices.count < 2 {
+                Text("iPhone hiện có \(vietnameseVoices.count) giọng tiếng Việt khả dụng. Các phong cách bên dưới biến đổi giọng bằng tốc độ, cao độ và âm lượng; không tạo thêm người đọc độc lập.")
+                    .font(.caption).foregroundStyle(.gray)
+            }
+            Picker("Phong cách đọc", selection: Binding(
+                get: { store.selected.voiceConfiguration.style },
+                set: { value in store.updateScene { $0.voiceConfiguration.apply(value) } }
+            )) {
+                ForEach(VoiceStyle.allCases) { option in
+                    Text(option.rawValue).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            voiceControl("Tốc độ", value: Binding(
+                get: { Double(store.selected.voiceConfiguration.rate) },
+                set: { value in store.updateScene {
+                    $0.voiceConfiguration.rate = Float(value)
+                    $0.voiceConfiguration.style = .custom
+                } }
+            ), range: 0.40...0.60)
+            voiceControl("Cao độ", value: Binding(
+                get: { Double(store.selected.voiceConfiguration.pitch) },
+                set: { value in store.updateScene {
+                    $0.voiceConfiguration.pitch = Float(value)
+                    $0.voiceConfiguration.style = .custom
+                } }
+            ), range: 0.50...2.00)
+            voiceControl("Âm lượng", value: Binding(
+                get: { Double(store.selected.voiceConfiguration.volume) },
+                set: { value in store.updateScene {
+                    $0.voiceConfiguration.volume = Float(value)
+                    $0.voiceConfiguration.style = .custom
+                } }
+            ), range: 0.00...1.00)
+            Toggle("Nghe thử tự động khi chỉnh sửa", isOn: $autoVoicePreview)
+                .tint(.cyan)
             HStack {
-                Text("Tốc độ giọng đọc")
-                Spacer()
-                Text(String(format: "%.2f", speechRate)).monospacedDigit().foregroundStyle(.cyan)
-            }.font(.subheadline)
-            Slider(value: $speechRate, in: 0.40...0.60, step: 0.01).tint(.cyan)
+                Button {
+                    voicePreviewTask?.cancel()
+                    liveVoice.play(text: store.selected.text,
+                                   configuration: store.selected.voiceConfiguration)
+                } label: {
+                    Label("Nghe thử ngay", systemImage: "play.fill")
+                }
+                Button {
+                    voicePreviewTask?.cancel()
+                    liveVoice.stop()
+                } label: {
+                    Label("Dừng", systemImage: "stop.fill")
+                }
+            }
+            .buttonStyle(.bordered)
+            Button("Áp dụng giọng này cho tất cả cảnh") {
+                let configuration = store.selected.voiceConfiguration
+                for index in store.project.scenes.indices {
+                    store.project.scenes[index].voiceConfiguration = configuration
+                    store.project.scenes[index].captionCues = []
+                }
+                store.project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
+                store.save()
+                scheduleLiveVoicePreview()
+                store.toast = "Đã áp dụng giọng cho tất cả cảnh. Hãy tạo lại thuyết minh để đồng bộ."
+            }
+            .buttonStyle(.bordered)
             if creatingNarration {
                 ProgressView("Đang tạo giọng đọc cảnh \(narrationSceneNumber)/\(store.project.scenes.count)")
                     .tint(.cyan)
@@ -293,7 +403,7 @@ struct StudioView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(creatingNarration || isExporting)
-            Text("Giọng đọc sử dụng tiếng Việt có sẵn trên iPhone. Mỗi cụm câu dùng mốc thời gian từ audio thực tế. Chưa căn chính xác từng từ trong cụm.")
+            Text("Nghe thử dùng cùng giọng và tone với xuất video. Mốc chữ được đồng bộ theo từng cụm câu, không phải từng từ.")
                 .font(.caption).foregroundStyle(.gray)
             Divider().overlay(.white.opacity(0.08))
 
@@ -326,6 +436,15 @@ struct StudioView: View {
             }
             Button("Lưu cài đặt audio") { store.save(); store.toast = "Đã lưu audio" }.buttonStyle(.bordered)
             Text("Hiện hỗ trợ nhập, đặt vị trí, điểm bắt đầu, âm lượng và fade. Chưa có waveform, beat detection, split hay crossfade editor.").font(.caption).foregroundStyle(.gray)
+        }
+    }
+
+    private func voiceControl(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        HStack {
+            Text(title).font(.subheadline).frame(width: 76, alignment: .leading)
+            Slider(value: value, in: range).tint(.cyan)
+            Text(String(format: "%.2f", value.wrappedValue))
+                .font(.caption.monospacedDigit()).frame(width: 42, alignment: .trailing)
         }
     }
 
@@ -451,6 +570,8 @@ struct StudioView: View {
     @MainActor
     private func createNarrationForAllScenes() async {
         guard !creatingNarration, !isExporting else { return }
+        voicePreviewTask?.cancel()
+        liveVoice.stop()
         creatingNarration = true
         narrationSceneNumber = 0
         defer { creatingNarration = false }
@@ -475,7 +596,7 @@ struct StudioView: View {
                 let finalURL = store.documents.appendingPathComponent(filename)
                 pendingFiles.append((temp: tempURL, final: finalURL))
                 let cues = try await speech.createTimedTrack(
-                    chunks: chunks, rate: Float(speechRate), output: tempURL)
+                    chunks: chunks, configuration: scene.voiceConfiguration, output: tempURL)
                 guard let last = cues.last, last.endTime > 0 else {
                     throw NarrationError.emptyAudio
                 }
