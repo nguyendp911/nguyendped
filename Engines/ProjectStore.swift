@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
     @Published var exportedURL: URL?
     @Published var renderError: String?
     private let filename = "project.json"
+    private var scheduledSave: DispatchWorkItem?
     var documents: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
     var sceneIndex: Int { project.scenes.firstIndex { $0.id == selectedSceneID } ?? 0 }
     var selected: TextScene { project.scenes[sceneIndex] }
@@ -21,7 +22,7 @@ import UniformTypeIdentifiers
     }
     func updateScene(_ change: (inout TextScene) -> Void) {
         guard !project.scenes.isEmpty else { return }
-        change(&project.scenes[sceneIndex]); save()
+        change(&project.scenes[sceneIndex]); scheduleSave()
     }
     func addScene() {
         let scene = TextScene(text: "Thông điệp mới", style: MotionStyle.allCases[project.scenes.count % MotionStyle.allCases.count], title: "Cảnh \(project.scenes.count + 1)")
@@ -36,7 +37,15 @@ import UniformTypeIdentifiers
         project.scenes.remove(at: sceneIndex); selectedSceneID = project.scenes.first?.id; save()
     }
     func move(from: IndexSet, to: Int) { project.scenes.move(fromOffsets: from, toOffset: to); save() }
+    private func scheduleSave() {
+        scheduledSave?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.save() }
+        scheduledSave = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+    }
     func save() {
+        scheduledSave?.cancel()
+        scheduledSave = nil
         do { try JSONEncoder().encode(project).write(to: documents.appendingPathComponent(filename), options: .atomic) }
         catch { toast = "Không lưu được dự án: \(error.localizedDescription)" }
     }
