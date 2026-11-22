@@ -49,6 +49,50 @@ enum TextMotion: String, Codable, CaseIterable, Identifiable {
     case scrollUp = "Chạy từ dưới lên"
     var id: String { rawValue }
 }
+struct CaptionCue: Codable, Equatable {
+    var text: String
+    var startTime: Double
+    var endTime: Double
+}
+
+/// Shared segmentation for the speech engine and video renderer. Punctuation
+/// stays in the spoken text; chunks are kept short for portrait video.
+enum CaptionSegmenter {
+    static func split(_ text: String) -> [String] {
+        let separators = CharacterSet(charactersIn: ".!?;:\n")
+        var sentences: [String] = []
+        var current = ""
+        for character in text {
+            current.append(character)
+            if character.unicodeScalars.allSatisfy({ separators.contains($0) }) {
+                let line = current.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !line.isEmpty { sentences.append(line) }
+                current = ""
+            }
+        }
+        let tail = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { sentences.append(tail) }
+        var result: [String] = []
+        for sentence in sentences {
+            var chunk = ""
+            var wordCount = 0
+            for word in sentence.split(whereSeparator: { $0.isWhitespace }) {
+                let value = String(word)
+                if !chunk.isEmpty && (chunk.count + value.count + 1 > 68 || wordCount >= 11) {
+                    result.append(chunk)
+                    chunk = value
+                    wordCount = 1
+                } else {
+                    chunk = chunk.isEmpty ? value : chunk + " " + value
+                    wordCount += 1
+                }
+            }
+            if !chunk.isEmpty { result.append(chunk) }
+        }
+        return result
+    }
+}
+
 struct TextScene: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var text: String
@@ -61,17 +105,19 @@ struct TextScene: Identifiable, Codable, Equatable {
     var transitionDuration: Double = 0.4
     var textMotion: TextMotion = .pages
     var scrollSpeed: Double = 1.0
+    var captionCues: [CaptionCue] = []
     enum CodingKeys: String, CodingKey {
-        case id, text, duration, style, seed, noiseCount, foreground, title, transitionDuration, textMotion, scrollSpeed
+        case id, text, duration, style, seed, noiseCount, foreground, title, transitionDuration, textMotion, scrollSpeed, captionCues
     }
     init(id: UUID = UUID(), text: String, duration: Double = 8, style: MotionStyle = .cyberMatrix,
          seed: UInt64 = UInt64.random(in: 1...UInt64.max), noiseCount: Int = 70,
          foreground: RGBAColor = .cyan, title: String = "Cảnh 1",
-         transitionDuration: Double = 0.4, textMotion: TextMotion = .pages, scrollSpeed: Double = 1.0) {
+         transitionDuration: Double = 0.4, textMotion: TextMotion = .pages, scrollSpeed: Double = 1.0,
+         captionCues: [CaptionCue] = []) {
         self.id = id; self.text = text; self.duration = duration; self.style = style
         self.seed = seed; self.noiseCount = noiseCount; self.foreground = foreground
         self.title = title; self.transitionDuration = transitionDuration
-        self.textMotion = textMotion; self.scrollSpeed = scrollSpeed
+        self.textMotion = textMotion; self.scrollSpeed = scrollSpeed; self.captionCues = captionCues
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -86,13 +132,14 @@ struct TextScene: Identifiable, Codable, Equatable {
         transitionDuration = try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.4
         textMotion = try c.decodeIfPresent(TextMotion.self, forKey: .textMotion) ?? .pages
         scrollSpeed = try c.decodeIfPresent(Double.self, forKey: .scrollSpeed) ?? 1.0
+        captionCues = try c.decodeIfPresent([CaptionCue].self, forKey: .captionCues) ?? []
     }
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id && lhs.text == rhs.text && lhs.duration == rhs.duration
         && lhs.style == rhs.style && lhs.seed == rhs.seed && lhs.noiseCount == rhs.noiseCount
         && lhs.foreground == rhs.foreground && lhs.title == rhs.title
         && lhs.transitionDuration == rhs.transitionDuration && lhs.textMotion == rhs.textMotion
-        && lhs.scrollSpeed == rhs.scrollSpeed
+        && lhs.scrollSpeed == rhs.scrollSpeed && lhs.captionCues == rhs.captionCues
     }
 }
 
