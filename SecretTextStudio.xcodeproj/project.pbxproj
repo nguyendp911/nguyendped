@@ -1,0 +1,71 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {};
+    objectVersion = 60;
+    objects = {
+    /* Begin PBXBuildFile section */
+    E0E9E830BF210BB2DF037742 /* SecretTextApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBD05DE185D82A0A4018B8F5 /* SecretTextApp.swift */; };
+    34BB1629AA79570CBD3A13EA /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F2ADC0054A1218D2F8EAC8 /* Project.swift */; };
+    7F1562DC1487A4CE5FDA995D /* ScrambleEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19161EFC59A410A8CA15A8B /* ScrambleEngine.swift */; };
+    B77F60717287EAF730D59064 /* FrameRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1151E37F142279FB9B53E2B /* FrameRenderer.swift */; };
+    49D21875E3E64D3365F70A35 /* ProjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D551021367028B43055BBE /* ProjectStore.swift */; };
+    692BAF6EC5CBE7B769FE7F8A /* VideoExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E3E2E0632844DF34677F792 /* VideoExporter.swift */; };
+    43273241318C99A2CFEE44E2 /* StudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E3CBF3312E803971FAFFA0 /* StudioView.swift */; };
+    /* End PBXBuildFile section */
+
+    /* Begin PBXFileReference section */
+    BBD05DE185D82A0A4018B8F5 /* SecretTextApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretTextApp.swift; sourceTree = "<group>"; };
+    03F2ADC0054A1218D2F8EAC8 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
+    C19161EFC59A410A8CA15A8B /* ScrambleEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrambleEngine.swift; sourceTree = "<group>"; };
+    E1151E37F142279FB9B53E2B /* FrameRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameRenderer.swift; sourceTree = "<group>"; };
+    95D551021367028B43055BBE /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
+    5E3E2E0632844DF34677F792 /* VideoExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoExporter.swift; sourceTree = "<group>"; };
+    13E3CBF3312E803971FAFFA0 /* StudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioView.swift; sourceTree = "<group>"; };
+    6D795F13C8C22E022040EE00 /* SecretTextStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SecretTextStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
+    /* End PBXFileReference section */
+
+    /* Begin PBXGroup section */
+    EDA6D6223944636B9C5B54AA = {isa = PBXGroup; children = ( 49FD95CD032EF842D70FF423 /* App */, 03FE26E9D2B275B11B82B9A2 /* Models */, AB1AA03D4B351D9625FAFA44 /* Engines */, E30B4F4A69D252D1867EE142 /* Views */, FBDC4F23F93125BBEEAE800C /* Products */ ); sourceTree = "<group>"; };
+    49FD95CD032EF842D70FF423 /* App */ = {isa = PBXGroup; children = ( BBD05DE185D82A0A4018B8F5 /* SecretTextApp.swift */ ); path = App; sourceTree = "<group>"; };
+    03FE26E9D2B275B11B82B9A2 /* Models */ = {isa = PBXGroup; children = ( 03F2ADC0054A1218D2F8EAC8 /* Project.swift */ ); path = Models; sourceTree = "<group>"; };
+    AB1AA03D4B351D9625FAFA44 /* Engines */ = {isa = PBXGroup; children = ( C19161EFC59A410A8CA15A8B /* ScrambleEngine.swift */, E1151E37F142279FB9B53E2B /* FrameRenderer.swift */, 95D551021367028B43055BBE /* ProjectStore.swift */, 5E3E2E0632844DF34677F792 /* VideoExporter.swift */ ); path = Engines; sourceTree = "<group>"; };
+    E30B4F4A69D252D1867EE142 /* Views */ = {isa = PBXGroup; children = ( 13E3CBF3312E803971FAFFA0 /* StudioView.swift */ ); path = Views; sourceTree = "<group>"; };
+    FBDC4F23F93125BBEEAE800C /* Products */ = {isa = PBXGroup; children = (6D795F13C8C22E022040EE00 /* SecretTextStudio.app */, ); name = Products; sourceTree = "<group>"; };
+    /* End PBXGroup section */
+
+    /* Begin PBXSourcesBuildPhase section */
+    BCE16DD0260827ECF338C787 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ( E0E9E830BF210BB2DF037742 /* SecretTextApp.swift in Sources */, 34BB1629AA79570CBD3A13EA /* Project.swift in Sources */, 7F1562DC1487A4CE5FDA995D /* ScrambleEngine.swift in Sources */, B77F60717287EAF730D59064 /* FrameRenderer.swift in Sources */, 49D21875E3E64D3365F70A35 /* ProjectStore.swift in Sources */, 692BAF6EC5CBE7B769FE7F8A /* VideoExporter.swift in Sources */, 43273241318C99A2CFEE44E2 /* StudioView.swift in Sources */ ); runOnlyForDeploymentPostprocessing = 0; };
+    /* End PBXSourcesBuildPhase section */
+
+    /* Begin PBXFrameworksBuildPhase section */
+    7561BFB015D8F536760CB671 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+    /* End PBXFrameworksBuildPhase section */
+
+    /* Begin PBXResourcesBuildPhase section */
+    0189424A5A60FED329FA868E = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+    /* End PBXResourcesBuildPhase section */
+
+    /* Begin PBXNativeTarget section */
+    0E8A3AD980EC179856012B7E /* SecretTextStudio */ = {isa = PBXNativeTarget; buildConfigurationList = 7DB5E5059C938F77334C80B8; buildPhases = (BCE16DD0260827ECF338C787, 7561BFB015D8F536760CB671, 0189424A5A60FED329FA868E); buildRules = (); dependencies = (); name = SecretTextStudio; productName = SecretTextStudio; productReference = 6D795F13C8C22E022040EE00; productType = "com.apple.product-type.application"; };
+    /* End PBXNativeTarget section */
+
+    /* Begin PBXProject section */
+    98F54143AB4E86B28C3AFEE0 /* Project object */ = {isa = PBXProject; attributes = { LastUpgradeCheck = 1600; TargetAttributes = { 0E8A3AD980EC179856012B7E = { CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = F2A35C967E1212CBBC6FECF3; compatibilityVersion = "Xcode 15.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = EDA6D6223944636B9C5B54AA; productRefGroup = FBDC4F23F93125BBEEAE800C; projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980EC179856012B7E /* SecretTextStudio */,); };
+    /* End PBXProject section */
+
+    /* Begin XCBuildConfiguration section */
+    CEC25DBC9F463CC1CC34CC84 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+    8456983ABBF079E76AB41CC8 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Release; };
+    989E76A6E3D459B163A3B3E5 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Secret Text Studio"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.SecretTextStudio; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+    1A927C84DB41E6F3C3070F30 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Secret Text Studio"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video"; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.example.SecretTextStudio; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+    /* End XCBuildConfiguration section */
+
+    /* Begin XCConfigurationList section */
+    F2A35C967E1212CBBC6FECF3 = {isa = XCConfigurationList; buildConfigurations = (CEC25DBC9F463CC1CC34CC84, 8456983ABBF079E76AB41CC8); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+    7DB5E5059C938F77334C80B8 = {isa = XCConfigurationList; buildConfigurations = (989E76A6E3D459B163A3B3E5, 1A927C84DB41E6F3C3070F30); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+    /* End XCConfigurationList section */
+
+    };
+    rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}
