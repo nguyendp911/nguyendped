@@ -6,6 +6,8 @@ final class FrameRenderer {
     private let cacheLock = NSLock()
     private var cachedKey = ""
     private var cachedValue: ScrambledText?
+    private var cachedCaptionText = ""
+    private var cachedCaptions: [String] = []
     private func scramble(for scene: TextScene) -> ScrambledText {
         let key = String(describing: scene.id) + "|" + String(scene.seed) + "|" + String(scene.noiseCount) + "|" + scene.text
         cacheLock.lock()
@@ -142,6 +144,9 @@ final class FrameRenderer {
     /// Break content into short reading cards. Each card stays on-screen rather
     /// than requiring the viewer to continuously track scrolling text.
     private func captionChunks(_ text: String) -> [String] {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if text == cachedCaptionText, !cachedCaptions.isEmpty { return cachedCaptions }
         let separators = CharacterSet(charactersIn: ".!?;:\n")
         var sentences: [String] = []
         var current = ""
@@ -171,7 +176,10 @@ final class FrameRenderer {
             }
             if !chunk.isEmpty { parts.append(chunk) }
         }
-        return parts.isEmpty ? ["· · ·"] : parts
+        let finished = parts.isEmpty ? ["· · ·"] : parts
+        cachedCaptionText = text
+        cachedCaptions = finished
+        return finished
     }
 
     private func drawCaptionPages(scene: TextScene, in ctx: CGContext, width: CGFloat,
