@@ -16,50 +16,84 @@ struct StudioView: View {
     enum StudioTab: String, CaseIterable { case create = "Tạo nhanh", scenes = "Timeline", audio = "Âm nhạc", export = "Xuất video" }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(red: 0.025, green: 0.035, blue: 0.075).ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        header
-                        preview
-                        tabPicker
-                        switch tab {
-                        case .create: quickCreator
-                        case .scenes: sceneEditor
-                        case .audio: audioEditor
-                        case .export: exportSettings
-                        }
-                    }.padding(.horizontal, 18).padding(.bottom, 60)
+        ZStack {
+            Color(red: 0.025, green: 0.035, blue: 0.075).ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    header
+                    preview
+                    activeSection
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .preferredColorScheme(.dark)
-            .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio, UTType(filenameExtension: "mp3") ?? .audio, UTType(filenameExtension: "wav") ?? .audio, UTType(filenameExtension: "m4a") ?? .audio], allowsMultipleSelection: false) { result in
-                switch result {
-                case .success(let urls): if let url = urls.first { store.importAudio(url) }
-                case .failure(let error): store.toast = error.localizedDescription
-                }
+            .scrollIndicators(.hidden)
+        }
+        .preferredColorScheme(.dark)
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio, UTType(filenameExtension: "mp3") ?? .audio, UTType(filenameExtension: "wav") ?? .audio, UTType(filenameExtension: "m4a") ?? .audio], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls): if let url = urls.first { store.importAudio(url) }
+            case .failure(let error): store.toast = error.localizedDescription
             }
-            .sheet(isPresented: $isSharing) {
-                if let url = store.exportedURL { ShareSheet(items: [url]) }
-            }
-            .alert("Thông báo", isPresented: Binding(get: { store.toast != nil }, set: { if !$0 { store.toast = nil } })) {
-                Button("Đóng", role: .cancel) { store.toast = nil }
-            } message: { Text(store.toast ?? "") }
+        }
+        .sheet(isPresented: $isSharing) {
+            if let url = store.exportedURL { ShareSheet(items: [url]) }
+        }
+        .alert("Thông báo", isPresented: Binding(get: { store.toast != nil }, set: { if !$0 { store.toast = nil } })) {
+            Button("Đóng", role: .cancel) { store.toast = nil }
+        } message: { Text(store.toast ?? "") }
+    }
+
+    @ViewBuilder private var activeSection: some View {
+        switch tab {
+        case .create: quickCreator
+        case .scenes: sceneEditor
+        case .audio: audioEditor
+        case .export: exportSettings
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: "sparkles.rectangle.stack").font(.title2).foregroundStyle(.cyan)
-                Text("SECRET TEXT").font(.system(size: 22, weight: .black, design: .rounded)).tracking(2)
-                Spacer()
-                Text("STUDIO").font(.caption.bold()).foregroundStyle(.cyan).padding(.horizontal, 10).padding(.vertical, 5).background(.cyan.opacity(0.12), in: Capsule())
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.title2).foregroundStyle(.cyan)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SECRET TEXT")
+                    .font(.system(size: 19, weight: .black, design: .rounded))
+                    .tracking(1.1)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Text("Biến thông điệp thành motion video")
+                    .font(.caption2).foregroundStyle(.gray).lineLimit(1)
             }
-            Text("Biến thông điệp thành motion video").font(.footnote).foregroundStyle(.gray)
-        }.padding(.top, 16)
+            Spacer(minLength: 2)
+            // Navigation is an on-demand menu, not a persistent tab bar.
+            Menu {
+                ForEach(StudioTab.allCases, id: \.rawValue) { item in
+                    Button {
+                        tab = item
+                    } label: {
+                        if tab == item {
+                            Label(item.rawValue, systemImage: "checkmark.circle.fill")
+                        } else {
+                            Text(item.rawValue)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(tab.rawValue).lineLimit(1)
+                    Image(systemName: "line.3.horizontal")
+                }
+                .font(.caption.bold())
+                .foregroundStyle(.cyan)
+                .padding(.horizontal, 10).padding(.vertical, 9)
+                .background(.cyan.opacity(0.11), in: Capsule())
+            }
+            .accessibilityLabel("Chọn mục: \(tab.rawValue)")
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var preview: some View {
@@ -72,7 +106,7 @@ struct StudioView: View {
                     Image(uiImage: image).resizable().interpolation(.medium).frame(width: size.width, height: size.height).clipped()
                 }
             }
-            .frame(height: 260)
+            .frame(height: 215)
             .clipShape(RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(.cyan.opacity(0.25)))
             HStack {
@@ -81,20 +115,6 @@ struct StudioView: View {
                 Text("\(store.selected.style.rawValue)  •  \(Int(store.selected.duration))s").font(.caption).foregroundStyle(.gray)
                 Button { store.updateScene { $0.seed = UInt64.random(in: 1...UInt64.max) } } label: { Image(systemName: "arrow.triangle.2.circlepath") }
             }.buttonStyle(.bordered)
-        }
-    }
-
-    private var tabPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 9) {
-                ForEach(StudioTab.allCases, id: \.rawValue) { item in
-                    Button { tab = item } label: {
-                        Text(item.rawValue).font(.subheadline.bold()).padding(.horizontal, 14).padding(.vertical, 11)
-                            .background(tab == item ? Color.cyan : Color.white.opacity(0.07), in: Capsule())
-                            .foregroundStyle(tab == item ? Color.black : Color.white)
-                    }
-                }
-            }
         }
     }
 
