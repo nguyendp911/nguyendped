@@ -55,10 +55,17 @@ import UniformTypeIdentifiers
     }
 
     func addScene() {
-        let scene = TextScene(text: "", style: MotionStyle.allCases[project.scenes.count % MotionStyle.allCases.count],
-                              title: "Cảnh \(project.scenes.count + 1)")
+        // A newly added scene inherits the current visual template.
+        // Different styles are an explicit choice in the scene editor.
+        let current = selected
+        var scene = TextScene(text: "", style: current.style, noiseCount: current.noiseCount,
+                              foreground: current.foreground, title: "Cảnh \(project.scenes.count + 1)",
+                              textMotion: current.textMotion, scrollSpeed: current.scrollSpeed,
+                              voiceConfiguration: current.voiceConfiguration)
+        scene.duration = current.duration
         project.scenes.append(scene)
         selectedSceneID = scene.id
+        project.audioClips.removeAll { $0.relativeFilename.hasPrefix("voiceover-") }
         save()
     }
     func duplicateScene() {
