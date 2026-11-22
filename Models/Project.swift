@@ -43,6 +43,11 @@ enum MotionStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum TextMotion: String, Codable, CaseIterable, Identifiable {
+    case reveal = "Hiện chữ dần"
+    case scrollUp = "Chạy từ dưới lên"
+    var id: String { rawValue }
+}
 struct TextScene: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var text: String
@@ -53,7 +58,41 @@ struct TextScene: Identifiable, Codable, Equatable {
     var foreground: RGBAColor = .cyan
     var title: String = "Cảnh 1"
     var transitionDuration: Double = 0.4
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id && lhs.text == rhs.text && lhs.duration == rhs.duration && lhs.style == rhs.style && lhs.seed == rhs.seed && lhs.noiseCount == rhs.noiseCount && lhs.foreground == rhs.foreground && lhs.title == rhs.title && lhs.transitionDuration == rhs.transitionDuration }
+    var textMotion: TextMotion = .reveal
+    var scrollSpeed: Double = 1.0
+    enum CodingKeys: String, CodingKey {
+        case id, text, duration, style, seed, noiseCount, foreground, title, transitionDuration, textMotion, scrollSpeed
+    }
+    init(id: UUID = UUID(), text: String, duration: Double = 8, style: MotionStyle = .cyberMatrix,
+         seed: UInt64 = UInt64.random(in: 1...UInt64.max), noiseCount: Int = 70,
+         foreground: RGBAColor = .cyan, title: String = "Cảnh 1",
+         transitionDuration: Double = 0.4, textMotion: TextMotion = .reveal, scrollSpeed: Double = 1.0) {
+        self.id = id; self.text = text; self.duration = duration; self.style = style
+        self.seed = seed; self.noiseCount = noiseCount; self.foreground = foreground
+        self.title = title; self.transitionDuration = transitionDuration
+        self.textMotion = textMotion; self.scrollSpeed = scrollSpeed
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        text = try c.decode(String.self, forKey: .text)
+        duration = try c.decode(Double.self, forKey: .duration)
+        style = try c.decode(MotionStyle.self, forKey: .style)
+        seed = try c.decode(UInt64.self, forKey: .seed)
+        noiseCount = try c.decode(Int.self, forKey: .noiseCount)
+        foreground = try c.decode(RGBAColor.self, forKey: .foreground)
+        title = try c.decode(String.self, forKey: .title)
+        transitionDuration = try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.4
+        textMotion = try c.decodeIfPresent(TextMotion.self, forKey: .textMotion) ?? .reveal
+        scrollSpeed = try c.decodeIfPresent(Double.self, forKey: .scrollSpeed) ?? 1.0
+    }
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.text == rhs.text && lhs.duration == rhs.duration
+        && lhs.style == rhs.style && lhs.seed == rhs.seed && lhs.noiseCount == rhs.noiseCount
+        && lhs.foreground == rhs.foreground && lhs.title == rhs.title
+        && lhs.transitionDuration == rhs.transitionDuration && lhs.textMotion == rhs.textMotion
+        && lhs.scrollSpeed == rhs.scrollSpeed
+    }
 }
 
 struct AudioClip: Codable, Identifiable, Equatable {
