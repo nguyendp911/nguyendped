@@ -64,7 +64,7 @@ struct StudioView: View {
                     .font(.system(size: 19, weight: .black, design: .rounded))
                     .tracking(1.1)
                     .lineLimit(1).minimumScaleFactor(0.75)
-                Text("tenungdung • Motion Studio")
+                Text("Motion Message Studio")
                     .font(.caption2).foregroundStyle(.gray).lineLimit(1)
             }
             Spacer(minLength: 2)

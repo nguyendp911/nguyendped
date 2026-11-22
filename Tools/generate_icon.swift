@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-// Generates a 1024px iOS App Icon for ViePN tenungdung at build time.
+// Generates a 1024px iOS App Icon for ViePN Reveal at build time.
 // No external image editor or network dependency.
 let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     .appendingPathComponent("App/Assets.xcassets/AppIcon.appiconset/Icon.png")
@@ -72,7 +72,7 @@ func label(_ text: String, y: CGFloat, fontSize: CGFloat, weight: NSFont.Weight,
                             withAttributes: attributes)
 }
 label("ViePN", y: 385, fontSize: 150, weight: .heavy, color: .white)
-label("tenungdung", y: 299, fontSize: 58, weight: .medium, color: cyan)
+label("REVEAL", y: 299, fontSize: 64, weight: .bold, color: cyan)
 
 for i in 0..<29 {
     let t = CGFloat(i) / 28
