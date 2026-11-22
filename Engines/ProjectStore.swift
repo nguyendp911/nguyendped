@@ -43,6 +43,7 @@ import UniformTypeIdentifiers
         guard !project.scenes.isEmpty else { return }
         let oldText = project.scenes[sceneIndex].text
         change(&project.scenes[sceneIndex])
+        hasEditedCurrentProject = true
         if project.scenes[sceneIndex].text != oldText {
             project.scenes[sceneIndex].captionCues = []
             // Prior synthesized speech and cue offsets can no longer be trusted
